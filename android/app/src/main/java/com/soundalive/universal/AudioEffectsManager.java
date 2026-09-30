@@ -83,13 +83,18 @@ public class AudioEffectsManager {
                                 if (configs == null) return;
                                 for (AudioPlaybackConfiguration config : configs) {
                                     try {
-                                        int sessionId = config.getClientAudioSessionId();
-                                        if (sessionId > 0) {
-                                            Log.d(TAG, "AudioPlayback detected active session: " + sessionId);
-                                            attachSession(sessionId);
+                                        java.lang.reflect.Method m = config.getClass().getMethod("getClientAudioSessionId");
+                                        Object res = m.invoke(config);
+                                        if (res instanceof Integer) {
+                                            int sessionId = (Integer) res;
+                                            if (sessionId > 0) {
+                                                attachSession(sessionId);
+                                            }
                                         }
                                     } catch (Exception ignored) {}
                                 }
+                                // Re-verify global session 0 is alive
+                                ensureSession0Alive();
                             }
                         }, new Handler(Looper.getMainLooper()));
                     }
@@ -171,6 +176,18 @@ public class AudioEffectsManager {
 
         PresetReverb r = presetReverbs.remove(sessionId);
         if (r != null) { try { r.release(); } catch (Exception ignored) {} }
+    }
+
+    public synchronized void ensureSession0Alive() {
+        if (!masterEnabled) return;
+        try {
+            Equalizer eq = equalizers.get(0);
+            if (eq == null || !eq.hasControl()) {
+                attachSession(0);
+            } else if (!eq.getEnabled()) {
+                eq.setEnabled(true);
+            }
+        } catch (Exception ignored) {}
     }
 
     public synchronized void setMasterEnabled(boolean enabled) {
