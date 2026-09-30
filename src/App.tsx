@@ -17,6 +17,7 @@ import {
   syncNativeBandLevel,
   syncNativeSamsungDials,
   syncNativeConcertHall,
+  syncNativeGain,
   startNativeBackgroundService,
   isNativeAndroidApp,
 } from './utils/nativeBridge';
@@ -26,6 +27,8 @@ import {
   Power,
   CheckCircle2,
   Sparkles,
+  Volume2,
+  Activity,
 } from 'lucide-react';
 
 const INITIAL_BANDS = [0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -38,6 +41,7 @@ export default function App() {
   const [bassTreble, setBassTreble] = useState<number>(0);
   const [instrumentVocal, setInstrumentVocal] = useState<number>(0);
   const [concertHall, setConcertHall] = useState<boolean>(false);
+  const [gainDb, setGainDb] = useState<number>(0); // FxSound Preamp Gain Boost (dB)
 
   // Auto start Android foreground audio service on mount
   useEffect(() => {
@@ -54,7 +58,7 @@ export default function App() {
     if (mode === 'basic') {
       syncNativeSamsungDials(bassTreble, instrumentVocal);
     }
-  }, [bassTreble, instrumentVocal, mode]);
+  }, [bassTreble, instrumentVocal]);
 
   // Sync Equalizer Bands to Android
   useEffect(() => {
@@ -63,12 +67,17 @@ export default function App() {
         syncNativeBandLevel(index, gain);
       });
     }
-  }, [bands, mode]);
+  }, [bands]);
 
-  // Sync Concert Hall (Pure Reverb) to Android
+  // Sync Concert Hall / Sonido Ambiental to Android
   useEffect(() => {
     syncNativeConcertHall(concertHall && enabled);
   }, [concertHall, enabled]);
+
+  // Sync Preamp Gain Boost to Android
+  useEffect(() => {
+    syncNativeGain(gainDb);
+  }, [gainDb]);
 
   // Handlers
   const handleToggleMaster = () => {
@@ -81,11 +90,8 @@ export default function App() {
     setBassTreble(preset.bassTreble);
     setInstrumentVocal(preset.instrumentVocal);
 
-    if (mode === 'basic') {
-      syncNativeSamsungDials(preset.bassTreble, preset.instrumentVocal);
-    } else {
-      preset.bands.forEach((g, idx) => syncNativeBandLevel(idx, g));
-    }
+    syncNativeSamsungDials(preset.bassTreble, preset.instrumentVocal);
+    preset.bands.forEach((g, idx) => syncNativeBandLevel(idx, g));
   };
 
   const handleChangeBand = (index: number, value: number) => {
@@ -120,6 +126,12 @@ export default function App() {
     setConcertHall((prev) => !prev);
   };
 
+  const handleChangeGain = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    setGainDb(val);
+    syncNativeGain(val);
+  };
+
   return (
     <div className="min-h-screen bg-black text-white flex flex-col items-center justify-start p-3 sm:p-5 select-none overscroll-none touch-pan-y">
       <div className="w-full max-w-lg flex flex-col gap-3">
@@ -133,11 +145,11 @@ export default function App() {
               <h1 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
                 SoundAlive
                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800/40">
-                  Samsung
+                  FxSound Pro
                 </span>
               </h1>
               <p className="text-[11px] text-neutral-500">
-                Efectos y calidad de sonido del sistema
+                Sistema de audio global (Universal FX)
               </p>
             </div>
           </div>
@@ -227,7 +239,35 @@ export default function App() {
           )}
         </main>
 
-        {/* Sonido Ambiental (Pure Reverb / FxSound Ambience - Zero Virtualizer) */}
+        {/* FxSound Preamp / Gain Volume Booster Slider */}
+        <section className="bg-neutral-950 border border-neutral-900 rounded-2xl p-4 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-neutral-200">
+              <Volume2 className="w-4 h-4 text-sky-400" />
+              <span className="text-sm font-semibold">Ganancia / Preamp (FxSound)</span>
+            </div>
+            <span className="text-xs font-mono font-bold text-sky-400">
+              {gainDb > 0 ? `+${gainDb.toFixed(1)} dB` : `${gainDb.toFixed(1)} dB`}
+            </span>
+          </div>
+          <input
+            type="range"
+            min="-5"
+            max="12"
+            step="0.5"
+            value={gainDb}
+            onChange={handleChangeGain}
+            disabled={!enabled}
+            className="w-full accent-sky-500 bg-neutral-900 h-2 rounded-lg appearance-none cursor-pointer disabled:opacity-40"
+          />
+          <div className="flex justify-between text-[10px] text-neutral-500 font-mono">
+            <span>-5 dB (Suave)</span>
+            <span>0 dB (Normal)</span>
+            <span>+12 dB (Potente)</span>
+          </div>
+        </section>
+
+        {/* Sonido Ambiental (Pure Reverb / FxSound Ambience) */}
         <section className="bg-black border border-neutral-800 rounded-2xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
@@ -241,10 +281,10 @@ export default function App() {
             </div>
             <div>
               <span className="text-sm font-semibold text-neutral-200 block">
-                Sonido Ambiental
+                Sonido Ambiental (Reverb + Surround)
               </span>
               <span className="text-xs text-neutral-500 block">
-                Reverberación acústica natural de entorno (estilo FxSound)
+                Acústica espacial envolvente (estilo FxSound)
               </span>
             </div>
           </div>
@@ -278,7 +318,7 @@ export default function App() {
         <footer className="flex items-center justify-between text-[11px] text-neutral-500 px-2 py-1">
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Servicio de audio activo en todo el sistema</span>
+            <span>FxSound & SoundAlive Global Engine</span>
           </div>
           <span className="text-neutral-600 font-mono">Samsung J2 Core</span>
         </footer>

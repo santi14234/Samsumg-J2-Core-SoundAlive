@@ -27,6 +27,7 @@ interface SoundAliveSystemPlugin {
   setBassBoost(options: { strength: number }): Promise<void>;
   setSamsungDials(options: { bassTreble: number; vocalInstrument: number }): Promise<void>;
   setConcertHall(options: { enabled: boolean }): Promise<void>;
+  setGain(options: { gain: number }): Promise<void>;
   getEffectsStatus(): Promise<NativeEffectsStatus>;
 }
 
@@ -87,6 +88,16 @@ export const syncNativeConcertHall = async (enabled: boolean): Promise<void> => 
     await SoundAliveSystem.setConcertHall({ enabled });
   } catch (err) {
     console.warn('Native setConcertHall error:', err);
+  }
+};
+
+export const syncNativeGain = async (gainDb: number): Promise<void> => {
+  if (!isNativeAndroidApp()) return;
+  try {
+    const gain = Math.round(gainDb * 100); // dB to millibels
+    await SoundAliveSystem.setGain({ gain });
+  } catch (err) {
+    console.warn('Native setGain error:', err);
   }
 };
 

@@ -43,6 +43,13 @@ public class SoundAlivePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setGain(PluginCall call) {
+        int millibels = call.getInt("gain", 0);
+        AudioEffectsManager.getInstance().setGain(millibels);
+        call.resolve();
+    }
+
+    @PluginMethod
     public void setAmbientSound(PluginCall call) {
         boolean enabled = call.getBoolean("enabled", false);
         AudioEffectsManager.getInstance().setAmbientSound(enabled);
