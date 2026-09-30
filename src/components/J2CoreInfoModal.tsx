@@ -46,31 +46,53 @@ export const J2CoreInfoModal: React.FC<J2CoreInfoModalProps> = ({ isOpen, onClos
 
   const handleCopyWorkflow = () => {
     const yamlContent = `name: Compilar APK SoundAlive con GitHub Actions
+
 on:
   push:
     branches: [ "main", "master" ]
   workflow_dispatch:
+
 jobs:
   build-android-apk:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Descargar código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22 (LTS)
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - run: npm install && npm run build
-      - uses: actions/setup-java@v4
+          node-version: 22
+
+      - name: Instalar dependencias
+        run: npm install --legacy-peer-deps
+
+      - name: Compilar aplicación web
+        run: npm run build
+
+      - name: Sincronizar proyecto Android con Capacitor
+        run: npx cap sync android
+
+      - name: Configurar Java JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - run: |
-          npm i @capacitor/core @capacitor/cli @capacitor/android
-          npx cap add android || true
-          npx cap sync android
-          chmod +x android/gradlew
-          cd android && ./gradlew assembleDebug
-      - uses: actions/upload-artifact@v4
+
+      - name: Aceptar licencias de Android SDK
+        run: yes | sdkmanager --licenses || true
+
+      - name: Otorgar permisos de ejecución a Gradle
+        run: chmod +x android/gradlew
+
+      - name: Compilar APK con Gradle
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Subir archivo APK como artefacto
+        uses: actions/upload-artifact@v4
         with:
           name: SoundAlive-Galaxy-J2-Core-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk`;
@@ -234,21 +256,31 @@ jobs:
               </a>
             </div>
 
-            <div className="p-3 rounded-2xl bg-blue-950/30 border border-blue-800/40 mb-4 flex items-center justify-between">
+            <div className="p-3 rounded-2xl bg-blue-950/30 border border-blue-800/40 mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <PackageCheck className="w-4 h-4 text-blue-400" />
+                <PackageCheck className="w-4 h-4 text-blue-400 shrink-0" />
                 <span className="text-xs text-blue-200">
-                  Ya dejamos configurado el archivo <code>.github/workflows/build-apk.yml</code> y <code>capacitor.config.json</code>
+                  Archivo listo: <code>build-apk.yml</code> (Node 22 LTS)
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={handleCopyWorkflow}
-                className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-500 font-medium shrink-0 ml-2"
-              >
-                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                {copied ? 'Copiado' : 'Copiar YAML'}
-              </button>
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                <a
+                  href="/build-apk.yml"
+                  download="build-apk.yml"
+                  className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium shrink-0"
+                >
+                  <Download className="w-3 h-3" />
+                  Descargar archivo .yml
+                </a>
+                <button
+                  type="button"
+                  onClick={handleCopyWorkflow}
+                  className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-slate-700 text-white hover:bg-slate-600 font-medium shrink-0"
+                >
+                  {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  {copied ? 'Copiado' : 'Copiar'}
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3 mb-6">
