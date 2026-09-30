@@ -11,6 +11,7 @@ import {
   FileCode,
   Copy,
   Check,
+  ExternalLink,
 } from 'lucide-react';
 
 interface J2CoreInfoModalProps {
@@ -195,6 +196,23 @@ jobs:
           </div>
         ) : (
           <div>
+            {/* Direct GitHub Repo Card */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-700/60 mb-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Repositorio Vinculado</span>
+                <span className="text-xs font-mono font-bold text-sky-400 truncate block">santi14234/Samsumg-J2-Core-SoundAlive</span>
+              </div>
+              <a
+                href="https://github.com/santi14234/Samsumg-J2-Core-SoundAlive/actions"
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors flex items-center gap-1 shrink-0"
+              >
+                Abrir Actions
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+
             {/* Quick Download ZIP Button */}
             <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/40 to-blue-950/40 border border-emerald-700/50 mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
