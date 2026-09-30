@@ -267,6 +267,10 @@ public class AudioEffectsManager {
         savePreferences();
     }
 
+    public synchronized void setAmbientSound(boolean enabled) {
+        setAmbiente(enabled ? 500 : 0);
+    }
+
     public synchronized void setSurround(int strength) {
         this.surroundStrength = Math.max(0, Math.min(1000, strength));
         for (Virtualizer v : virtualizers.values()) {
