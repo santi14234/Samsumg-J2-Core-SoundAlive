@@ -16,8 +16,12 @@ import {
   syncNativeMasterEnabled,
   syncNativeBandLevel,
   syncNativeSamsungDials,
-  syncNativeConcertHall,
   syncNativeGain,
+  syncNativeClarity,
+  syncNativeAmbiente,
+  syncNativeSurround,
+  syncNativeDynamicBoost,
+  syncNativeBassBoost,
   startNativeBackgroundService,
   isNativeAndroidApp,
 } from './utils/nativeBridge';
@@ -26,9 +30,11 @@ import {
   Radio,
   Power,
   CheckCircle2,
-  Sparkles,
   Volume2,
-  Activity,
+  Sparkles,
+  Zap,
+  Globe,
+  Sun,
 } from 'lucide-react';
 
 const INITIAL_BANDS = [0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -40,8 +46,14 @@ export default function App() {
   const [bands, setBands] = useState<number[]>(INITIAL_BANDS);
   const [bassTreble, setBassTreble] = useState<number>(0);
   const [instrumentVocal, setInstrumentVocal] = useState<number>(0);
-  const [concertHall, setConcertHall] = useState<boolean>(false);
-  const [gainDb, setGainDb] = useState<number>(0); // FxSound Preamp Gain Boost (dB)
+
+  // FxSound Pro individual separate effect sliders (0 - 1000)
+  const [clarity, setClarity] = useState<number>(0);
+  const [ambiente, setAmbiente] = useState<number>(0);
+  const [surround, setSurround] = useState<number>(0);
+  const [dynamicBoost, setDynamicBoost] = useState<number>(0);
+  const [bassBoost, setBassBoost] = useState<number>(0);
+  const [gainDb, setGainDb] = useState<number>(0);
 
   // Auto start Android foreground audio service on mount
   useEffect(() => {
@@ -53,14 +65,13 @@ export default function App() {
     syncNativeMasterEnabled(enabled);
   }, [enabled]);
 
-  // Sync Samsung Dual Dials to Android
+  // Sync Samsung Dials & FxSound effects
   useEffect(() => {
     if (mode === 'basic') {
       syncNativeSamsungDials(bassTreble, instrumentVocal);
     }
   }, [bassTreble, instrumentVocal]);
 
-  // Sync Equalizer Bands to Android
   useEffect(() => {
     if (mode === 'advanced') {
       bands.forEach((gain, index) => {
@@ -69,27 +80,21 @@ export default function App() {
     }
   }, [bands]);
 
-  // Sync Concert Hall / Sonido Ambiental to Android
-  useEffect(() => {
-    syncNativeConcertHall(concertHall && enabled);
-  }, [concertHall, enabled]);
-
-  // Sync Preamp Gain Boost to Android
-  useEffect(() => {
-    syncNativeGain(gainDb);
-  }, [gainDb]);
+  useEffect(() => { syncNativeGain(gainDb); }, [gainDb]);
+  useEffect(() => { syncNativeClarity(clarity); }, [clarity]);
+  useEffect(() => { syncNativeAmbiente(ambiente); }, [ambiente]);
+  useEffect(() => { syncNativeSurround(surround); }, [surround]);
+  useEffect(() => { syncNativeDynamicBoost(dynamicBoost); }, [dynamicBoost]);
+  useEffect(() => { syncNativeBassBoost(bassBoost); }, [bassBoost]);
 
   // Handlers
-  const handleToggleMaster = () => {
-    setEnabled((prev) => !prev);
-  };
+  const handleToggleMaster = () => { setEnabled((prev) => !prev); };
 
   const handleSelectPreset = (preset: EqualizerPreset) => {
     setSelectedPresetId(preset.id);
     setBands([...preset.bands]);
     setBassTreble(preset.bassTreble);
     setInstrumentVocal(preset.instrumentVocal);
-
     syncNativeSamsungDials(preset.bassTreble, preset.instrumentVocal);
     preset.bands.forEach((g, idx) => syncNativeBandLevel(idx, g));
   };
@@ -110,32 +115,10 @@ export default function App() {
     INITIAL_BANDS.forEach((_, idx) => syncNativeBandLevel(idx, 0));
   };
 
-  const handleChangeBassTreble = (val: number) => {
-    setBassTreble(val);
-    setSelectedPresetId('custom');
-    syncNativeSamsungDials(val, instrumentVocal);
-  };
-
-  const handleChangeInstrumentVocal = (val: number) => {
-    setInstrumentVocal(val);
-    setSelectedPresetId('custom');
-    syncNativeSamsungDials(bassTreble, val);
-  };
-
-  const handleToggleConcertHall = () => {
-    setConcertHall((prev) => !prev);
-  };
-
-  const handleChangeGain = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value);
-    setGainDb(val);
-    syncNativeGain(val);
-  };
-
   return (
     <div className="min-h-screen bg-black text-white flex flex-col items-center justify-start p-3 sm:p-5 select-none overscroll-none touch-pan-y">
       <div className="w-full max-w-lg flex flex-col gap-3">
-        {/* Top Header & Samsung Master Switch */}
+        {/* Top Header & Master Switch */}
         <header className="flex items-center justify-between py-2 border-b border-neutral-900">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400">
@@ -149,12 +132,11 @@ export default function App() {
                 </span>
               </h1>
               <p className="text-[11px] text-neutral-500">
-                Sistema de audio global (Universal FX)
+                Audio espacial universal y ecualizador
               </p>
             </div>
           </div>
 
-          {/* Master Switch */}
           <button
             type="button"
             onClick={handleToggleMaster}
@@ -169,15 +151,13 @@ export default function App() {
           </button>
         </header>
 
-        {/* Mode Switch Tabs: Básico (2 Perillas) vs Avanzado (Bandas) */}
+        {/* Mode Tabs */}
         <div className="grid grid-cols-2 p-1 rounded-xl bg-neutral-950 border border-neutral-900">
           <button
             type="button"
             onClick={() => setMode('basic')}
             className={`py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-              mode === 'basic'
-                ? 'bg-neutral-900 text-sky-400 shadow-sm'
-                : 'text-neutral-500 hover:text-neutral-300'
+              mode === 'basic' ? 'bg-neutral-900 text-sky-400 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'
             }`}
           >
             <Radio className="w-3.5 h-3.5" />
@@ -187,9 +167,7 @@ export default function App() {
             type="button"
             onClick={() => setMode('advanced')}
             className={`py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-              mode === 'advanced'
-                ? 'bg-neutral-900 text-sky-400 shadow-sm'
-                : 'text-neutral-500 hover:text-neutral-300'
+              mode === 'advanced' ? 'bg-neutral-900 text-sky-400 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'
             }`}
           >
             <Sliders className="w-3.5 h-3.5" />
@@ -197,7 +175,7 @@ export default function App() {
           </button>
         </div>
 
-        {/* Quick Presets Horizontal Strip */}
+        {/* Presets Strip */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
           {SOUNDALIVE_PRESETS.map((p) => {
             const isSelected = selectedPresetId === p.id;
@@ -208,9 +186,7 @@ export default function App() {
                 onClick={() => handleSelectPreset(p)}
                 disabled={!enabled}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors border ${
-                  isSelected
-                    ? 'bg-neutral-900 border-sky-500/60 text-sky-400 font-semibold'
-                    : 'bg-black border-neutral-900 text-neutral-400 hover:border-neutral-800'
+                  isSelected ? 'bg-neutral-900 border-sky-500/60 text-sky-400 font-semibold' : 'bg-black border-neutral-900 text-neutral-400'
                 } disabled:opacity-40`}
               >
                 {p.name}
@@ -219,14 +195,14 @@ export default function App() {
           })}
         </div>
 
-        {/* Main Control Panel (Basic: 2 Dials | Advanced: 9 Sliders) */}
+        {/* Main Panel */}
         <main className="w-full">
           {mode === 'basic' ? (
             <SoundAliveDials
               bassTreble={bassTreble}
               instrumentVocal={instrumentVocal}
-              onChangeBassTreble={handleChangeBassTreble}
-              onChangeInstrumentVocal={handleChangeInstrumentVocal}
+              onChangeBassTreble={(v) => { setBassTreble(v); setSelectedPresetId('custom'); syncNativeSamsungDials(v, instrumentVocal); }}
+              onChangeInstrumentVocal={(v) => { setInstrumentVocal(v); setSelectedPresetId('custom'); syncNativeSamsungDials(bassTreble, v); }}
               disabled={!enabled}
             />
           ) : (
@@ -239,88 +215,143 @@ export default function App() {
           )}
         </main>
 
-        {/* FxSound Preamp / Gain Volume Booster Slider */}
-        <section className="bg-neutral-950 border border-neutral-900 rounded-2xl p-4 flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-neutral-200">
-              <Volume2 className="w-4 h-4 text-sky-400" />
-              <span className="text-sm font-semibold">Ganancia / Preamp (FxSound)</span>
-            </div>
-            <span className="text-xs font-mono font-bold text-sky-400">
-              {gainDb > 0 ? `+${gainDb.toFixed(1)} dB` : `${gainDb.toFixed(1)} dB`}
-            </span>
-          </div>
-          <input
-            type="range"
-            min="-5"
-            max="12"
-            step="0.5"
-            value={gainDb}
-            onChange={handleChangeGain}
-            disabled={!enabled}
-            className="w-full accent-sky-500 bg-neutral-900 h-2 rounded-lg appearance-none cursor-pointer disabled:opacity-40"
-          />
-          <div className="flex justify-between text-[10px] text-neutral-500 font-mono">
-            <span>-5 dB (Suave)</span>
-            <span>0 dB (Normal)</span>
-            <span>+12 dB (Potente)</span>
-          </div>
-        </section>
-
-        {/* Sonido Ambiental (Pure Reverb / FxSound Ambience) */}
-        <section className="bg-black border border-neutral-800 rounded-2xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
-                concertHall && enabled
-                  ? 'bg-sky-500/20 border-sky-500/40 text-sky-400'
-                  : 'bg-neutral-900 border-neutral-800 text-neutral-600'
-              }`}
-            >
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-sm font-semibold text-neutral-200 block">
-                Sonido Ambiental (Reverb + Surround)
-              </span>
-              <span className="text-xs text-neutral-500 block">
-                Acústica espacial envolvente (estilo FxSound)
-              </span>
-            </div>
+        {/* FxSound Pro Separate Sliders Panel (Claridad, Ambiente, Sonido Envolvente, Refuerzo dinámico, Refuerzo de graves) */}
+        <section className="bg-neutral-950 border border-neutral-900 rounded-2xl p-4 flex flex-col gap-4">
+          <div className="flex items-center gap-2 text-sky-400 text-xs font-bold uppercase tracking-wider border-b border-neutral-900 pb-2">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>FxSound Pro Efectos Avanzados</span>
           </div>
 
-          <button
-            type="button"
-            onClick={handleToggleConcertHall}
-            disabled={!enabled}
-            className={`w-12 h-6 rounded-full transition-colors relative flex items-center px-1 border ${
-              concertHall && enabled
-                ? 'bg-sky-500 border-sky-400'
-                : 'bg-neutral-900 border-neutral-800 opacity-60'
-            } disabled:opacity-30`}
-          >
-            <div
-              className={`w-4 h-4 rounded-full bg-black shadow transition-transform ${
-                concertHall && enabled ? 'translate-x-6' : 'translate-x-0'
-              }`}
+          {/* Ganancia / Preamp */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                <Volume2 className="w-3.5 h-3.5 text-sky-400" /> Ganancia / Preamp
+              </span>
+              <span className="font-mono font-bold text-sky-400">{gainDb > 0 ? `+${gainDb.toFixed(1)} dB` : `${gainDb.toFixed(1)} dB`}</span>
+            </div>
+            <input
+              type="range"
+              min="-5"
+              max="12"
+              step="0.5"
+              value={gainDb}
+              onChange={(e) => setGainDb(parseFloat(e.target.value))}
+              disabled={!enabled}
+              className="w-full accent-sky-500 bg-neutral-900 h-1.5 rounded-lg appearance-none cursor-pointer disabled:opacity-40"
             />
-          </button>
+          </div>
+
+          {/* Claridad */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                <Sun className="w-3.5 h-3.5 text-amber-400" /> Claridad (Agudos definidos)
+              </span>
+              <span className="font-mono text-neutral-400">{clarity}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1000"
+              value={clarity}
+              onChange={(e) => setClarity(parseInt(e.target.value))}
+              disabled={!enabled}
+              className="w-full accent-amber-500 bg-neutral-900 h-1.5 rounded-lg appearance-none cursor-pointer disabled:opacity-40"
+            />
+          </div>
+
+          {/* Ambiente */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-sky-400" /> Ambiente (Reverberación espacial)
+              </span>
+              <span className="font-mono text-neutral-400">{ambiente}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1000"
+              value={ambiente}
+              onChange={(e) => setAmbiente(parseInt(e.target.value))}
+              disabled={!enabled}
+              className="w-full accent-sky-500 bg-neutral-900 h-1.5 rounded-lg appearance-none cursor-pointer disabled:opacity-40"
+            />
+          </div>
+
+          {/* Sonido envolvente */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" /> Sonido envolvente (Virtualizer 3D)
+              </span>
+              <span className="font-mono text-neutral-400">{surround}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1000"
+              value={surround}
+              onChange={(e) => setSurround(parseInt(e.target.value))}
+              disabled={!enabled}
+              className="w-full accent-purple-500 bg-neutral-900 h-1.5 rounded-lg appearance-none cursor-pointer disabled:opacity-40"
+            />
+          </div>
+
+          {/* Refuerzo dinámico */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-emerald-400" /> Refuerzo dinámico (Compresión / Punch)
+              </span>
+              <span className="font-mono text-neutral-400">{dynamicBoost}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1000"
+              value={dynamicBoost}
+              onChange={(e) => setDynamicBoost(parseInt(e.target.value))}
+              disabled={!enabled}
+              className="w-full accent-emerald-500 bg-neutral-900 h-1.5 rounded-lg appearance-none cursor-pointer disabled:opacity-40"
+            />
+          </div>
+
+          {/* Refuerzo de graves */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-rose-400" /> Refuerzo de graves (Bass Boost)
+              </span>
+              <span className="font-mono text-neutral-400">{bassBoost}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1000"
+              value={bassBoost}
+              onChange={(e) => setBassBoost(parseInt(e.target.value))}
+              disabled={!enabled}
+              className="w-full accent-rose-500 bg-neutral-900 h-1.5 rounded-lg appearance-none cursor-pointer disabled:opacity-40"
+            />
+          </div>
         </section>
 
-        {/* Live Hardware Effects Diagnostic requested by user */}
+        {/* Live Hardware Diagnostic */}
         <HardwareStatusCard
           masterEnabled={enabled}
-          concertHallEnabled={concertHall}
+          concertHallEnabled={ambiente > 0}
           mode={mode}
         />
 
-        {/* System Active Status Footer */}
+        {/* Footer */}
         <footer className="flex items-center justify-between text-[11px] text-neutral-500 px-2 py-1">
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-            <span>FxSound & SoundAlive Global Engine</span>
+            <span>FxSound Pro & SoundAlive Engine</span>
           </div>
-          <span className="text-neutral-600 font-mono">Samsung J2 Core</span>
+          <span className="text-neutral-600 font-mono">v1.2.6</span>
         </footer>
       </div>
     </div>

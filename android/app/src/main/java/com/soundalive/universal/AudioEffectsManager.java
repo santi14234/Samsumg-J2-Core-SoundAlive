@@ -27,10 +27,9 @@ import java.util.Set;
 public class AudioEffectsManager {
     private static final String TAG = "SoundAliveEffects";
     private static final String PREFS_NAME = "SoundAliveAudioPrefs";
-    private static final int EFFECT_PRIORITY = 2147483647; // Maximum possible priority for system domination
+    private static final int EFFECT_PRIORITY = 2147483647; // Maximum priority
     private static AudioEffectsManager instance;
 
-    // Frequencies of the UI bands (63Hz to 16kHz)
     public static final int[] UI_FREQUENCIES_HZ = {63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000};
 
     private final Set<Integer> activeSessions = new HashSet<>();
@@ -43,19 +42,18 @@ public class AudioEffectsManager {
 
     private boolean masterEnabled = true;
     private short bassBoostStrength = 0; // 0 - 1000
-    private int gainMillibels = 0; // Preamp gain boost (-500 to +1500 mB)
+    private int gainMillibels = 0; // -500 to +1200 mB
+    private int clarityStrength = 0; // 0 - 1000 (Treble boost)
+    private int ambienteStrength = 0; // 0 - 1000 (Reverb amount)
+    private int surroundStrength = 0; // 0 - 1000 (Virtualizer width)
+    private int dynamicBoostStrength = 0; // 0 - 1000 (Compression / Loudness)
 
-    // Dual Samsung Dials values (-100 to +100)
+    // Dual Dials
     private int dialBassTreble = 0;
     private int dialVocalInstrument = 0;
     private boolean isBasicMode = true;
 
-    // Sonido Ambiental (Subtle, pleasant Room Reverb - original SoundAlive style)
-    private boolean ambientSoundEnabled = false;
-
-    // Stores the 9 UI band levels (-1000 to +1000 mB)
     private final Map<Short, Short> uiBandLevels = new HashMap<>();
-
     private Context appContext;
 
     private AudioEffectsManager() {
@@ -75,11 +73,8 @@ public class AudioEffectsManager {
         if (this.appContext == null) {
             this.appContext = context.getApplicationContext();
             loadPreferences();
-
-            // 1. Attach to session 0 (Global audio output mix) immediately
             attachSession(0);
 
-            // 2. Android 8.0+ System-wide Playback Interceptor & Session Tracker:
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 try {
                     AudioManager am = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
@@ -94,9 +89,7 @@ public class AudioEffectsManager {
                                         Object res = m.invoke(config);
                                         if (res instanceof Integer) {
                                             int sessionId = (Integer) res;
-                                            if (sessionId > 0) {
-                                                attachSession(sessionId);
-                                            }
+                                            if (sessionId > 0) attachSession(sessionId);
                                         }
                                     } catch (Exception ignored) {}
                                 }
@@ -105,7 +98,7 @@ public class AudioEffectsManager {
                         }, new Handler(Looper.getMainLooper()));
                     }
                 } catch (Exception e) {
-                    Log.w(TAG, "Could not register AudioPlaybackCallback: " + e.getMessage());
+                    Log.w(TAG, "AudioPlaybackCallback error: " + e.getMessage());
                 }
             }
         }
@@ -124,73 +117,67 @@ public class AudioEffectsManager {
         }
         activeSessions.add(sessionId);
 
-        // 1. Equalizer with MAXIMUM PRIORITY
+        // 1. Equalizer
         try {
             Equalizer eq = new Equalizer(EFFECT_PRIORITY, sessionId);
             eq.setEnabled(masterEnabled);
             applyAllBandsToEqualizer(eq);
             equalizers.put(sessionId, eq);
-            Log.d(TAG, "Equalizer attached to session " + sessionId);
         } catch (Exception e) {
-            Log.w(TAG, "Cannot init Equalizer on session " + sessionId + ": " + e.getMessage());
+            Log.w(TAG, "Equalizer init error: " + e.getMessage());
         }
 
-        // 2. Hardware Bass Boost
+        // 2. BassBoost
         try {
             BassBoost bb = new BassBoost(EFFECT_PRIORITY, sessionId);
             bb.setEnabled(masterEnabled && bassBoostStrength > 0);
-            if (bb.getStrengthSupported()) {
-                bb.setStrength(bassBoostStrength);
-            }
+            if (bb.getStrengthSupported()) bb.setStrength(bassBoostStrength);
             bassBoosts.put(sessionId, bb);
         } catch (Exception e) {
-            Log.w(TAG, "Cannot init BassBoost on session " + sessionId + ": " + e.getMessage());
+            Log.w(TAG, "BassBoost init error: " + e.getMessage());
         }
 
-        // 3. LoudnessEnhancer (Preamp Gain Booster - FxSound style)
+        // 3. LoudnessEnhancer (Gain + Dynamic Boost)
         try {
             LoudnessEnhancer le = new LoudnessEnhancer(sessionId);
-            le.setTargetGain(gainMillibels);
-            le.setEnabled(masterEnabled && gainMillibels != 0);
+            int totalGain = gainMillibels + (int)(dynamicBoostStrength * 0.5); // Add dynamic compression boost
+            le.setTargetGain(totalGain);
+            le.setEnabled(masterEnabled && totalGain != 0);
             loudnessEnhancers.put(sessionId, le);
         } catch (Exception e) {
-            Log.w(TAG, "Cannot init LoudnessEnhancer on session " + sessionId + ": " + e.getMessage());
+            Log.w(TAG, "LoudnessEnhancer init error: " + e.getMessage());
         }
 
-        // 4. EnvironmentalReverb (Sonido Ambiental)
+        // 4. EnvironmentalReverb (Ambiente)
         try {
             EnvironmentalReverb env = new EnvironmentalReverb(EFFECT_PRIORITY, sessionId);
-            configureEnvironmentalReverb(env);
-            env.setEnabled(masterEnabled && ambientSoundEnabled);
+            configureEnvironmentalReverb(env, ambienteStrength);
+            env.setEnabled(masterEnabled && ambienteStrength > 0);
             envReverbs.put(sessionId, env);
         } catch (Exception e) {
-            Log.w(TAG, "Cannot init EnvironmentalReverb on session " + sessionId + ": " + e.getMessage());
+            Log.w(TAG, "EnvironmentalReverb init error: " + e.getMessage());
         }
 
         // 5. PresetReverb
         try {
             PresetReverb rev = new PresetReverb(EFFECT_PRIORITY, sessionId);
-            if (ambientSoundEnabled) {
-                rev.setPreset(PresetReverb.PRESET_MEDIUMROOM);
-            } else {
-                rev.setPreset(PresetReverb.PRESET_NONE);
-            }
-            rev.setEnabled(masterEnabled && ambientSoundEnabled);
+            rev.setPreset(ambienteStrength > 0 ? PresetReverb.PRESET_MEDIUMROOM : PresetReverb.PRESET_NONE);
+            rev.setEnabled(masterEnabled && ambienteStrength > 0);
             presetReverbs.put(sessionId, rev);
         } catch (Exception e) {
-            Log.w(TAG, "Cannot init PresetReverb on session " + sessionId + ": " + e.getMessage());
+            Log.w(TAG, "PresetReverb init error: " + e.getMessage());
         }
 
-        // 6. Virtualizer (Surround Sound Widener)
+        // 6. Virtualizer (Sonido Envolvente)
         try {
             Virtualizer virt = new Virtualizer(EFFECT_PRIORITY, sessionId);
             if (virt.getStrengthSupported()) {
-                virt.setStrength((short) 500); // 50% surround enhancement
+                virt.setStrength((short) surroundStrength);
             }
-            virt.setEnabled(masterEnabled && ambientSoundEnabled);
+            virt.setEnabled(masterEnabled && surroundStrength > 0);
             virtualizers.put(sessionId, virt);
         } catch (Exception e) {
-            Log.w(TAG, "Cannot init Virtualizer on session " + sessionId + ": " + e.getMessage());
+            Log.w(TAG, "Virtualizer init error: " + e.getMessage());
         }
     }
 
@@ -231,77 +218,74 @@ public class AudioEffectsManager {
 
     public synchronized void setMasterEnabled(boolean enabled) {
         this.masterEnabled = enabled;
-        for (Equalizer eq : equalizers.values()) {
-            try { eq.setEnabled(enabled); } catch (Exception ignored) {}
-        }
-        for (BassBoost bb : bassBoosts.values()) {
-            try { bb.setEnabled(enabled && bassBoostStrength > 0); } catch (Exception ignored) {}
-        }
-        for (LoudnessEnhancer le : loudnessEnhancers.values()) {
-            try { le.setEnabled(enabled && gainMillibels != 0); } catch (Exception ignored) {}
-        }
-        for (EnvironmentalReverb env : envReverbs.values()) {
-            try { env.setEnabled(enabled && ambientSoundEnabled); } catch (Exception ignored) {}
-        }
-        for (PresetReverb r : presetReverbs.values()) {
-            try { r.setEnabled(enabled && ambientSoundEnabled); } catch (Exception ignored) {}
-        }
-        for (Virtualizer v : virtualizers.values()) {
-            try { v.setEnabled(enabled && ambientSoundEnabled); } catch (Exception ignored) {}
-        }
+        for (Equalizer eq : equalizers.values()) { try { eq.setEnabled(enabled); } catch (Exception ignored) {} }
+        for (BassBoost bb : bassBoosts.values()) { try { bb.setEnabled(enabled && bassBoostStrength > 0); } catch (Exception ignored) {} }
+        for (LoudnessEnhancer le : loudnessEnhancers.values()) { try { le.setEnabled(enabled && (gainMillibels != 0 || dynamicBoostStrength > 0)); } catch (Exception ignored) {} }
+        for (EnvironmentalReverb env : envReverbs.values()) { try { env.setEnabled(enabled && ambienteStrength > 0); } catch (Exception ignored) {} }
+        for (PresetReverb r : presetReverbs.values()) { try { r.setEnabled(enabled && ambienteStrength > 0); } catch (Exception ignored) {} }
+        for (Virtualizer v : virtualizers.values()) { try { v.setEnabled(enabled && surroundStrength > 0); } catch (Exception ignored) {} }
         savePreferences();
     }
 
-    public synchronized void setSamsungDials(int bassTreble, int vocalInstrument) {
-        this.isBasicMode = true;
-        this.dialBassTreble = Math.max(-100, Math.min(100, bassTreble));
-        this.dialVocalInstrument = Math.max(-100, Math.min(100, vocalInstrument));
-
-        double btNorm = this.dialBassTreble / 100.0;
-        double viNorm = this.dialVocalInstrument / 100.0;
-
-        short bassLevel = (short) Math.round(-btNorm * 800);
-        short trebleLevel = (short) Math.round(btNorm * 800);
-        short vocalLevel = (short) Math.round(viNorm * 800);
-        short instLevel = (short) Math.round(-viNorm * 600);
-
-        uiBandLevels.put((short) 0, (short) (bassLevel + instLevel));       // 63Hz
-        uiBandLevels.put((short) 1, (short) (bassLevel * 0.8 + instLevel * 0.5)); // 125Hz
-        uiBandLevels.put((short) 2, (short) (bassLevel * 0.4));             // 250Hz
-        uiBandLevels.put((short) 3, (short) (vocalLevel * 0.5));            // 500Hz
-        uiBandLevels.put((short) 4, (short) (vocalLevel));                  // 1kHz
-        uiBandLevels.put((short) 5, (short) (vocalLevel * 0.7));            // 2kHz
-        uiBandLevels.put((short) 6, (short) (trebleLevel * 0.4));           // 4kHz
-        uiBandLevels.put((short) 7, (short) (trebleLevel * 0.8 + instLevel * 0.5)); // 8kHz
-        uiBandLevels.put((short) 8, (short) (trebleLevel + instLevel));     // 16kHz
-
-        if (btNorm < 0) {
-            this.bassBoostStrength = (short) Math.round(-btNorm * 900);
-        } else {
-            this.bassBoostStrength = 0;
-        }
-        for (BassBoost bb : bassBoosts.values()) {
+    public synchronized void setGain(int millibels) {
+        this.gainMillibels = Math.max(-500, Math.min(1500, millibels));
+        for (LoudnessEnhancer le : loudnessEnhancers.values()) {
             try {
-                bb.setEnabled(masterEnabled && bassBoostStrength > 0);
-                if (bb.getStrengthSupported()) {
-                    bb.setStrength(bassBoostStrength);
-                }
+                int totalGain = this.gainMillibels + (int)(dynamicBoostStrength * 0.5);
+                le.setTargetGain(totalGain);
+                le.setEnabled(masterEnabled && totalGain != 0);
             } catch (Exception ignored) {}
         }
+        savePreferences();
+    }
 
-        for (Equalizer eq : equalizers.values()) {
-            applyAllBandsToEqualizer(eq);
+    public synchronized void setClarity(int strength) {
+        this.clarityStrength = Math.max(0, Math.min(1000, strength));
+        // Boost high frequencies (8kHz and 16kHz) for FxSound Clarity
+        short boost = (short) Math.round((this.clarityStrength / 1000.0) * 800);
+        uiBandLevels.put((short) 7, boost);
+        uiBandLevels.put((short) 8, (short) Math.round(boost * 1.2));
+        for (Equalizer eq : equalizers.values()) { applyAllBandsToEqualizer(eq); }
+        savePreferences();
+    }
+
+    public synchronized void setAmbiente(int strength) {
+        this.ambienteStrength = Math.max(0, Math.min(1000, strength));
+        boolean active = ambienteStrength > 0;
+        for (EnvironmentalReverb env : envReverbs.values()) {
+            try {
+                configureEnvironmentalReverb(env, ambienteStrength);
+                env.setEnabled(masterEnabled && active);
+            } catch (Exception ignored) {}
+        }
+        for (PresetReverb r : presetReverbs.values()) {
+            try {
+                r.setPreset(active ? PresetReverb.PRESET_MEDIUMROOM : PresetReverb.PRESET_NONE);
+                r.setEnabled(masterEnabled && active);
+            } catch (Exception ignored) {}
         }
         savePreferences();
     }
 
-    public synchronized void setBandLevel(short uiBandIndex, short level) {
-        this.isBasicMode = false;
-        if (uiBandIndex < 0 || uiBandIndex >= UI_FREQUENCIES_HZ.length) return;
-        uiBandLevels.put(uiBandIndex, level);
+    public synchronized void setSurround(int strength) {
+        this.surroundStrength = Math.max(0, Math.min(1000, strength));
+        for (Virtualizer v : virtualizers.values()) {
+            try {
+                if (v.getStrengthSupported()) v.setStrength((short) surroundStrength);
+                v.setEnabled(masterEnabled && surroundStrength > 0);
+            } catch (Exception ignored) {}
+        }
+        savePreferences();
+    }
 
-        for (Equalizer eq : equalizers.values()) {
-            applyAllBandsToEqualizer(eq);
+    public synchronized void setDynamicBoost(int strength) {
+        this.dynamicBoostStrength = Math.max(0, Math.min(1000, strength));
+        for (LoudnessEnhancer le : loudnessEnhancers.values()) {
+            try {
+                int totalGain = gainMillibels + (int)(dynamicBoostStrength * 0.5);
+                le.setTargetGain(totalGain);
+                le.setEnabled(masterEnabled && totalGain != 0);
+            } catch (Exception ignored) {}
         }
         savePreferences();
     }
@@ -311,22 +295,16 @@ public class AudioEffectsManager {
         for (BassBoost bb : bassBoosts.values()) {
             try {
                 bb.setEnabled(masterEnabled && bassBoostStrength > 0);
-                if (bb.getStrengthSupported()) {
-                    bb.setStrength(bassBoostStrength);
-                }
+                if (bb.getStrengthSupported()) bb.setStrength(bassBoostStrength);
             } catch (Exception ignored) {}
         }
         savePreferences();
     }
 
-    public synchronized void setGain(int millibels) {
-        this.gainMillibels = Math.max(-500, Math.min(1500, millibels)); // -5dB to +15dB boost
-        for (LoudnessEnhancer le : loudnessEnhancers.values()) {
-            try {
-                le.setTargetGain(this.gainMillibels);
-                le.setEnabled(masterEnabled && this.gainMillibels != 0);
-            } catch (Exception ignored) {}
-        }
+    public synchronized void setBandLevel(short uiBandIndex, short level) {
+        if (uiBandIndex < 0 || uiBandIndex >= UI_FREQUENCIES_HZ.length) return;
+        uiBandLevels.put(uiBandIndex, level);
+        for (Equalizer eq : equalizers.values()) { applyAllBandsToEqualizer(eq); }
         savePreferences();
     }
 
@@ -368,67 +346,19 @@ public class AudioEffectsManager {
                     eq.setBandLevel(b, clamp(lvl, minLvl, maxLvl));
                 }
             }
-        } catch (Exception e) {
-            Log.w(TAG, "Error applying bands: " + e.getMessage());
-        }
+        } catch (Exception ignored) {}
     }
 
-    public synchronized void setAmbientSound(boolean enabled) {
-        this.ambientSoundEnabled = enabled;
-
-        for (PresetReverb r : presetReverbs.values()) {
-            try {
-                if (ambientSoundEnabled) {
-                    r.setPreset(PresetReverb.PRESET_MEDIUMROOM);
-                    r.setEnabled(masterEnabled);
-                } else {
-                    r.setEnabled(false);
-                    r.setPreset(PresetReverb.PRESET_NONE);
-                }
-            } catch (Exception ignored) {}
-        }
-
-        for (EnvironmentalReverb env : envReverbs.values()) {
-            try {
-                if (ambientSoundEnabled) {
-                    configureEnvironmentalReverb(env);
-                    env.setEnabled(masterEnabled);
-                } else {
-                    env.setEnabled(false);
-                }
-            } catch (Exception ignored) {}
-        }
-
-        for (Virtualizer v : virtualizers.values()) {
-            try {
-                v.setEnabled(masterEnabled && ambientSoundEnabled);
-            } catch (Exception ignored) {}
-        }
-
-        // Instant refresh trick
-        for (Equalizer eq : equalizers.values()) {
-            try {
-                eq.setEnabled(false);
-                eq.setEnabled(masterEnabled);
-            } catch (Exception ignored) {}
-        }
-
-        savePreferences();
-    }
-
-    public synchronized void setConcertHall(boolean enabled) {
-        setAmbientSound(enabled);
-    }
-
-    private void configureEnvironmentalReverb(EnvironmentalReverb env) {
+    private void configureEnvironmentalReverb(EnvironmentalReverb env, int strength) {
         if (env == null) return;
         try {
-            env.setRoomLevel((short) -700);
+            double ratio = strength / 1000.0;
+            env.setRoomLevel((short) (-1000 + (ratio * 400)));
             env.setRoomHFLevel((short) -500);
-            env.setReflectionsLevel((short) -1000);
-            env.setReverbLevel((short) -500);
-            env.setDecayTime(1800);
-            env.setDecayHFRatio((short) 800);
+            env.setReflectionsLevel((short) (-1200 + (ratio * 400)));
+            env.setReverbLevel((short) (-800 + (ratio * 400)));
+            env.setDecayTime((int)(1000 + (ratio * 1500)));
+            env.setDecayHFRatio((short) 750);
         } catch (Exception ignored) {}
     }
 
@@ -437,8 +367,11 @@ public class AudioEffectsManager {
         obj.put("masterEnabled", masterEnabled);
         obj.put("equalizerActive", masterEnabled && !equalizers.isEmpty());
         obj.put("gainMillibels", gainMillibels);
-        obj.put("ambientSoundEnabled", ambientSoundEnabled);
-        obj.put("concertHallEnabled", ambientSoundEnabled);
+        obj.put("clarity", clarityStrength);
+        obj.put("ambiente", ambienteStrength);
+        obj.put("surround", surroundStrength);
+        obj.put("dynamicBoost", dynamicBoostStrength);
+        obj.put("bassBoost", bassBoostStrength);
         obj.put("sessionsCount", activeSessions.size());
         return obj;
     }
@@ -449,11 +382,12 @@ public class AudioEffectsManager {
             SharedPreferences sp = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             SharedPreferences.Editor ed = sp.edit();
             ed.putBoolean("masterEnabled", masterEnabled);
-            ed.putBoolean("ambientSound", ambientSoundEnabled);
             ed.putInt("gainMillibels", gainMillibels);
-            ed.putBoolean("isBasicMode", isBasicMode);
-            ed.putInt("dialBassTreble", dialBassTreble);
-            ed.putInt("dialVocalInstrument", dialVocalInstrument);
+            ed.putInt("clarity", clarityStrength);
+            ed.putInt("ambiente", ambienteStrength);
+            ed.putInt("surround", surroundStrength);
+            ed.putInt("dynamicBoost", dynamicBoostStrength);
+            ed.putInt("bassBoost", bassBoostStrength);
             for (Map.Entry<Short, Short> entry : uiBandLevels.entrySet()) {
                 ed.putInt("ui_band_" + entry.getKey(), entry.getValue());
             }
@@ -466,11 +400,12 @@ public class AudioEffectsManager {
         try {
             SharedPreferences sp = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             masterEnabled = sp.getBoolean("masterEnabled", true);
-            ambientSoundEnabled = sp.getBoolean("ambientSound", false);
             gainMillibels = sp.getInt("gainMillibels", 0);
-            isBasicMode = sp.getBoolean("isBasicMode", true);
-            dialBassTreble = sp.getInt("dialBassTreble", 0);
-            dialVocalInstrument = sp.getInt("dialVocalInstrument", 0);
+            clarityStrength = sp.getInt("clarity", 0);
+            ambienteStrength = sp.getInt("ambiente", 0);
+            surroundStrength = sp.getInt("surround", 0);
+            dynamicBoostStrength = sp.getInt("dynamicBoost", 0);
+            bassBoostStrength = (short) sp.getInt("bassBoost", 0);
 
             for (short b = 0; b < UI_FREQUENCIES_HZ.length; b++) {
                 if (sp.contains("ui_band_" + b)) {

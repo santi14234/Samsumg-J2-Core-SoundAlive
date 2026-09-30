@@ -28,6 +28,10 @@ interface SoundAliveSystemPlugin {
   setSamsungDials(options: { bassTreble: number; vocalInstrument: number }): Promise<void>;
   setConcertHall(options: { enabled: boolean }): Promise<void>;
   setGain(options: { gain: number }): Promise<void>;
+  setClarity(options: { strength: number }): Promise<void>;
+  setAmbiente(options: { strength: number }): Promise<void>;
+  setSurround(options: { strength: number }): Promise<void>;
+  setDynamicBoost(options: { strength: number }): Promise<void>;
   getEffectsStatus(): Promise<NativeEffectsStatus>;
 }
 
@@ -94,10 +98,55 @@ export const syncNativeConcertHall = async (enabled: boolean): Promise<void> => 
 export const syncNativeGain = async (gainDb: number): Promise<void> => {
   if (!isNativeAndroidApp()) return;
   try {
-    const gain = Math.round(gainDb * 100); // dB to millibels
+    const gain = Math.round(gainDb * 100);
     await SoundAliveSystem.setGain({ gain });
   } catch (err) {
     console.warn('Native setGain error:', err);
+  }
+};
+
+export const syncNativeClarity = async (strength: number): Promise<void> => {
+  if (!isNativeAndroidApp()) return;
+  try {
+    await SoundAliveSystem.setClarity({ strength });
+  } catch (err) {
+    console.warn('Native setClarity error:', err);
+  }
+};
+
+export const syncNativeAmbiente = async (strength: number): Promise<void> => {
+  if (!isNativeAndroidApp()) return;
+  try {
+    await SoundAliveSystem.setAmbiente({ strength });
+  } catch (err) {
+    console.warn('Native setAmbiente error:', err);
+  }
+};
+
+export const syncNativeSurround = async (strength: number): Promise<void> => {
+  if (!isNativeAndroidApp()) return;
+  try {
+    await SoundAliveSystem.setSurround({ strength });
+  } catch (err) {
+    console.warn('Native setSurround error:', err);
+  }
+};
+
+export const syncNativeDynamicBoost = async (strength: number): Promise<void> => {
+  if (!isNativeAndroidApp()) return;
+  try {
+    await SoundAliveSystem.setDynamicBoost({ strength });
+  } catch (err) {
+    console.warn('Native setDynamicBoost error:', err);
+  }
+};
+
+export const syncNativeBassBoost = async (strength: number): Promise<void> => {
+  if (!isNativeAndroidApp()) return;
+  try {
+    await SoundAliveSystem.setBassBoost({ strength });
+  } catch (err) {
+    console.warn('Native setBassBoost error:', err);
   }
 };
 

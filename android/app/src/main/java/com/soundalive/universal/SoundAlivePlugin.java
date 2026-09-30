@@ -50,6 +50,34 @@ public class SoundAlivePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setClarity(PluginCall call) {
+        int strength = call.getInt("strength", 0);
+        AudioEffectsManager.getInstance().setClarity(strength);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setAmbiente(PluginCall call) {
+        int strength = call.getInt("strength", 0);
+        AudioEffectsManager.getInstance().setAmbiente(strength);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setSurround(PluginCall call) {
+        int strength = call.getInt("strength", 0);
+        AudioEffectsManager.getInstance().setSurround(strength);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setDynamicBoost(PluginCall call) {
+        int strength = call.getInt("strength", 0);
+        AudioEffectsManager.getInstance().setDynamicBoost(strength);
+        call.resolve();
+    }
+
+    @PluginMethod
     public void setAmbientSound(PluginCall call) {
         boolean enabled = call.getBoolean("enabled", false);
         AudioEffectsManager.getInstance().setAmbientSound(enabled);
