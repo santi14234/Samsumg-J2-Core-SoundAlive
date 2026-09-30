@@ -47,7 +47,7 @@ public class AudioEffectsManager {
     private int dialVocalInstrument = 0;
     private boolean isBasicMode = true;
 
-    // Sonido Ambiental (Pure Reverb / FxSound Ambience - NO VIRTUALIZERS)
+    // Sonido Ambiental (Subtle, pleasant Room Reverb - original SoundAlive style)
     private boolean ambientSoundEnabled = false;
 
     // Stores the 9 UI band levels (-1000 to +1000 mB)
@@ -184,7 +184,7 @@ public class AudioEffectsManager {
         try {
             PresetReverb rev = new PresetReverb(EFFECT_PRIORITY, sessionId);
             if (ambientSoundEnabled) {
-                rev.setPreset(PresetReverb.PRESET_LARGEHALL);
+                rev.setPreset(PresetReverb.PRESET_MEDIUMROOM);
             } else {
                 rev.setPreset(PresetReverb.PRESET_NONE);
             }
@@ -377,16 +377,16 @@ public class AudioEffectsManager {
     }
 
     /**
-     * Sonido Ambiental (Pure Reverb / FxSound Ambience - Zero Virtualizer)
+     * Sonido Ambiental (Pure Reverb / Original SoundAlive subtle room acoustics - NO VIRTUALIZERS)
      */
     public synchronized void setAmbientSound(boolean enabled) {
         this.ambientSoundEnabled = enabled;
 
-        // 1. PresetReverb (setPreset BEFORE setEnabled)
+        // 1. PresetReverb (configured BEFORE enabling)
         for (PresetReverb r : presetReverbs.values()) {
             try {
                 if (ambientSoundEnabled) {
-                    r.setPreset(PresetReverb.PRESET_LARGEHALL);
+                    r.setPreset(PresetReverb.PRESET_MEDIUMROOM); // MediumRoom is much more subtle and natural!
                     r.setEnabled(masterEnabled);
                 } else {
                     r.setEnabled(false);
@@ -395,7 +395,7 @@ public class AudioEffectsManager {
             } catch (Exception ignored) {}
         }
 
-        // 2. EnvironmentalReverb (Warm FxSound Ambience natural room acoustics)
+        // 2. EnvironmentalReverb (Samsung original SoundAlive parameters)
         for (EnvironmentalReverb env : envReverbs.values()) {
             try {
                 if (ambientSoundEnabled) {
@@ -414,6 +414,15 @@ public class AudioEffectsManager {
             } catch (Exception ignored) {}
         }
 
+        // --- INSTANT UPDATE REBUILD TRICK ---
+        // Rapidly toggle the hardware equalizer to force AudioFlinger to apply all parameter buffers instantly
+        for (Equalizer eq : equalizers.values()) {
+            try {
+                eq.setEnabled(false);
+                eq.setEnabled(masterEnabled);
+            } catch (Exception ignored) {}
+        }
+
         savePreferences();
     }
 
@@ -425,13 +434,13 @@ public class AudioEffectsManager {
     private void configureEnvironmentalReverb(EnvironmentalReverb env) {
         if (env == null) return;
         try {
-            // Natural, warm room ambiance (like FxSound Ambience)
-            env.setRoomLevel((short) 0); // 0 mB (Full room volume)
-            env.setRoomHFLevel((short) -300); // Warm natural high-end rolloff
-            env.setReflectionsLevel((short) 600); // Smooth early reflections
-            env.setReverbLevel((short) 1800); // Lush, warm ambient reverb (+18 dB)
-            env.setDecayTime(2600); // 2.6 seconds decay time (warm ambient space)
-            env.setDecayHFRatio((short) 850);
+            // Original Samsung SoundAlive Room Reverb signature (subtle, warm, natural room acoustics):
+            env.setRoomLevel((short) -800); // Soft room reflections volume
+            env.setRoomHFLevel((short) -600); // Warm high rolloff
+            env.setReflectionsLevel((short) -1200); // Pleasant early reflection delay
+            env.setReverbLevel((short) -600); // Light ambient tail, not muddy
+            env.setDecayTime(1500); // 1.5 seconds decay time (original SoundAlive room decay)
+            env.setDecayHFRatio((short) 700);
         } catch (Exception e) {
             Log.w(TAG, "Error configuring EnvironmentalReverb: " + e.getMessage());
         }
