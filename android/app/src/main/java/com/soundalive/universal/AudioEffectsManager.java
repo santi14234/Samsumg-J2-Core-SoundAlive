@@ -266,6 +266,19 @@ public class AudioEffectsManager {
         savePreferences();
     }
 
+    public synchronized void setBassBoostStrength(short strength) {
+        this.bassBoostStrength = strength;
+        for (BassBoost bb : bassBoosts.values()) {
+            try {
+                bb.setEnabled(masterEnabled && bassBoostStrength > 0);
+                if (bb.getStrengthSupported()) {
+                    bb.setStrength(bassBoostStrength);
+                }
+            } catch (Exception ignored) {}
+        }
+        savePreferences();
+    }
+
     private void applyAllBandsToEqualizer(Equalizer eq) {
         if (eq == null) return;
         try {
