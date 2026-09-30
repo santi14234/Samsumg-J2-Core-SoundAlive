@@ -20,6 +20,9 @@ public class SoundAliveService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        // Initialize effects manager in foreground service
+        AudioEffectsManager.getInstance().init(this);
+
         createNotificationChannel();
         Notification notification = createNotification();
         try {
@@ -37,6 +40,7 @@ public class SoundAliveService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        AudioEffectsManager.getInstance().init(this);
         return START_STICKY;
     }
 

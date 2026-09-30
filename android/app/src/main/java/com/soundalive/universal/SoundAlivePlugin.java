@@ -28,9 +28,24 @@ public class SoundAlivePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setSamsungDials(PluginCall call) {
+        int bassTreble = call.getInt("bassTreble", 0);
+        int vocalInstrument = call.getInt("vocalInstrument", 0);
+        AudioEffectsManager.getInstance().setSamsungDials(bassTreble, vocalInstrument);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setConcertHall(PluginCall call) {
+        boolean enabled = call.getBoolean("enabled", false);
+        AudioEffectsManager.getInstance().setConcertHall(enabled);
+        call.resolve();
+    }
+
+    @PluginMethod
     public void setBandLevel(PluginCall call) {
         int band = call.getInt("band", 0);
-        int level = call.getInt("level", 0); // in millibels, e.g. -1500 to 1500 (or dB * 100)
+        int level = call.getInt("level", 0); // in millibels, e.g. -1000 to 1000
         AudioEffectsManager.getInstance().setBandLevel((short) band, (short) level);
         call.resolve();
     }
@@ -39,20 +54,6 @@ public class SoundAlivePlugin extends Plugin {
     public void setBassBoost(PluginCall call) {
         int strength = call.getInt("strength", 0); // 0 - 1000
         AudioEffectsManager.getInstance().setBassBoostStrength((short) strength);
-        call.resolve();
-    }
-
-    @PluginMethod
-    public void setSurround(PluginCall call) {
-        int strength = call.getInt("strength", 0); // 0 - 1000
-        AudioEffectsManager.getInstance().setVirtualizerStrength((short) strength);
-        call.resolve();
-    }
-
-    @PluginMethod
-    public void setReverb(PluginCall call) {
-        int preset = call.getInt("preset", 0);
-        AudioEffectsManager.getInstance().setReverbPreset((short) preset);
         call.resolve();
     }
 

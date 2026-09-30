@@ -2,8 +2,8 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { RotateCcw } from 'lucide-react';
 
 interface SoundAliveDialsProps {
-  bassTreble: number; // -100 (Bass) to 100 (Treble)
-  instrumentVocal: number; // -100 (Inst) to 100 (Voc)
+  bassTreble: number; // -100 (Graves) to 100 (Agudos)
+  instrumentVocal: number; // -100 (Instrumental) to 100 (Vocal)
   onChangeBassTreble: (val: number) => void;
   onChangeInstrumentVocal: (val: number) => void;
   disabled?: boolean;
@@ -17,74 +17,75 @@ export const SoundAliveDials: React.FC<SoundAliveDialsProps> = ({
   disabled = false,
 }) => {
   return (
-    <div className="bg-[#111726] border border-slate-800 rounded-2xl p-4 shadow-sm">
+    <div className="bg-black border border-neutral-800 rounded-2xl p-4 select-none touch-none">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-sm font-semibold tracking-wider uppercase text-slate-300">
-            Control de Perillas Duales
+          <h3 className="text-sm font-semibold tracking-wider text-neutral-200">
+            Ajuste Rápido (Perillas)
           </h3>
-          <p className="text-xs text-slate-400">
-            Ajuste acústico rápido característico de Samsung SoundAlive
+          <p className="text-xs text-neutral-500">
+            Gira para balancear Graves/Agudos y Vocal/Instrumental
           </p>
         </div>
         <button
+          type="button"
           onClick={() => {
             onChangeBassTreble(0);
             onChangeInstrumentVocal(0);
           }}
           disabled={disabled || (bassTreble === 0 && instrumentVocal === 0)}
-          className="flex items-center gap-1.5 text-xs font-medium text-blue-400 hover:text-blue-300 disabled:opacity-40 disabled:hover:text-blue-400 transition-colors px-2.5 py-1 rounded-lg bg-blue-950/40 border border-blue-900/40"
+          className="flex items-center gap-1.5 text-xs font-medium text-sky-400 hover:text-sky-300 disabled:opacity-30 transition-colors px-2.5 py-1 rounded-lg bg-neutral-900 border border-neutral-800 active:bg-neutral-800"
         >
           <RotateCcw className="w-3 h-3" />
           Centrar
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
-        {/* Dial 1: Bass <-> Treble */}
-        <CircularDial
-          labelLeft="Graves"
-          labelRight="Agudos"
-          title="Tono Principal"
+      <div className="grid grid-cols-2 gap-3 pt-2">
+        {/* Dial 1: Graves <-> Agudos */}
+        <SamsungCircularDial
+          labelMin="Graves"
+          labelMax="Agudos"
+          title="Tono"
           value={bassTreble}
           onChange={onChangeBassTreble}
           disabled={disabled}
-          color="blue"
+          accentColor="#0ea5e9"
         />
 
-        {/* Dial 2: Instrument <-> Vocal */}
-        <CircularDial
-          labelLeft="Instrumento"
-          labelRight="Vocal"
-          title="Presencia Escénica"
+        {/* Dial 2: Instrumental <-> Vocal */}
+        <SamsungCircularDial
+          labelMin="Instrumental"
+          labelMax="Vocal"
+          title="Voz / Música"
           value={instrumentVocal}
           onChange={onChangeInstrumentVocal}
           disabled={disabled}
-          color="cyan"
+          accentColor="#38bdf8"
         />
       </div>
     </div>
   );
 };
 
-interface CircularDialProps {
-  labelLeft: string;
-  labelRight: string;
+interface SamsungCircularDialProps {
+  labelMin: string;
+  labelMax: string;
   title: string;
   value: number; // -100 to 100
   onChange: (val: number) => void;
   disabled?: boolean;
-  color?: 'blue' | 'cyan';
+  accentColor?: string;
 }
 
-const CircularDial: React.FC<CircularDialProps> = ({
-  labelLeft,
-  labelRight,
+const SamsungCircularDial: React.FC<SamsungCircularDialProps> = ({
+  labelMin,
+  labelMax,
   title,
   value,
   onChange,
   disabled = false,
-  color = 'blue',
+  accentColor = '#0ea5e9',
 }) => {
   const dialRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -92,7 +93,7 @@ const CircularDial: React.FC<CircularDialProps> = ({
   // Map value (-100 to 100) to angle (-135deg to +135deg)
   const angle = (value / 100) * 135;
 
-  const handlePointer = useCallback(
+  const calculateAngle = useCallback(
     (clientX: number, clientY: number) => {
       if (disabled || !dialRef.current) return;
       const rect = dialRef.current.getBoundingClientRect();
@@ -102,7 +103,7 @@ const CircularDial: React.FC<CircularDialProps> = ({
       const dx = clientX - centerX;
       const dy = clientY - centerY;
 
-      // Angle in radians from 12 o'clock
+      // Angle from 12 o'clock in degrees (-180 to +180)
       let deg = Math.atan2(dx, -dy) * (180 / Math.PI);
 
       // Clamp angle within -135 to 135
@@ -112,181 +113,176 @@ const CircularDial: React.FC<CircularDialProps> = ({
         deg = dx > 0 ? 135 : -135;
       }
 
-      // Map back to -100 to 100
       const newVal = Math.round((deg / 135) * 100);
       onChange(Math.max(-100, Math.min(100, newVal)));
     },
     [disabled, onChange]
   );
 
-  const onMouseDown = (e: React.MouseEvent) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (disabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } catch (_) {}
     setIsDragging(true);
-    handlePointer(e.clientX, e.clientY);
+    calculateAngle(e.clientX, e.clientY);
   };
 
-  const onTouchStart = (e: React.TouchEvent) => {
-    if (disabled) return;
-    setIsDragging(true);
-    handlePointer(e.touches[0].clientX, e.touches[0].clientY);
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging || disabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    calculateAngle(e.clientX, e.clientY);
   };
 
-  useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-      handlePointer(e.clientX, e.clientY);
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      if (!isDragging) return;
-      handlePointer(e.touches[0].clientX, e.touches[0].clientY);
-    };
-    const onEnd = () => {
-      setIsDragging(false);
-    };
-
-    if (isDragging) {
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onEnd);
-      window.addEventListener('touchmove', onTouchMove);
-      window.addEventListener('touchend', onEnd);
-    }
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onEnd);
-      window.removeEventListener('touchmove', onTouchMove);
-      window.removeEventListener('touchend', onEnd);
-    };
-  }, [isDragging, handlePointer]);
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch (_) {}
+    setIsDragging(false);
+  };
 
   // Tick marks around dial
   const ticks = [-135, -90, -45, 0, 45, 90, 135];
 
-  const glowColor = color === 'cyan' ? 'rgba(6,182,212,0.3)' : 'rgba(59,130,246,0.3)';
-  const activeAccent = color === 'cyan' ? '#06b6d4' : '#3b82f6';
-
   return (
-    <div className={`flex flex-col items-center select-none ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
-      <span className="text-xs font-medium text-slate-400 mb-3">{title}</span>
+    <div
+      className={`flex flex-col items-center select-none touch-none ${
+        disabled ? 'opacity-30 pointer-events-none' : ''
+      }`}
+      style={{ touchAction: 'none' }}
+    >
+      <span className="text-[11px] font-medium text-neutral-400 mb-1">{title}</span>
 
       {/* Dial Container */}
-      <div className="relative w-44 h-44 flex items-center justify-center">
-        {/* Outer Arc Scale */}
-        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 176 176">
-          {/* Background Arc */}
+      <div
+        ref={dialRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        className="relative w-36 h-36 flex items-center justify-center cursor-pointer touch-none"
+        style={{ touchAction: 'none' }}
+      >
+        {/* Outer Arc SVG */}
+        <svg
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          viewBox="0 0 144 144"
+        >
+          {/* Background Track */}
           <circle
-            cx="88"
-            cy="88"
-            r="70"
+            cx="72"
+            cy="72"
+            r="56"
             fill="none"
-            stroke="#1e293b"
-            strokeWidth="6"
-            strokeDasharray="330 110"
-            strokeDashoffset="-55"
+            stroke="#262626"
+            strokeWidth="5"
+            strokeDasharray="264 88"
+            strokeDashoffset="-44"
             strokeLinecap="round"
           />
           {/* Active Colored Arc */}
           <circle
-            cx="88"
-            cy="88"
-            r="70"
+            cx="72"
+            cy="72"
+            r="56"
             fill="none"
-            stroke={activeAccent}
-            strokeWidth="6"
-            strokeDasharray="330 110"
-            strokeDashoffset={-55 + (135 - angle) * 1.22}
+            stroke={accentColor}
+            strokeWidth="5"
+            strokeDasharray="264 88"
+            strokeDashoffset={-44 + (135 - angle) * 0.98}
             strokeLinecap="round"
-            className="transition-all duration-75"
-            style={{
-              filter: `drop-shadow(0 0 6px ${glowColor})`,
-            }}
           />
         </svg>
 
         {/* Ticks */}
         {ticks.map((tAngle) => {
           const rad = ((tAngle - 90) * Math.PI) / 180;
-          const x1 = 88 + Math.cos(rad) * 60;
-          const y1 = 88 + Math.sin(rad) * 60;
-          const x2 = 88 + Math.cos(rad) * 54;
-          const y2 = 88 + Math.sin(rad) * 54;
+          const x1 = 72 + Math.cos(rad) * 48;
+          const y1 = 72 + Math.sin(rad) * 48;
+          const x2 = 72 + Math.cos(rad) * 43;
+          const y2 = 72 + Math.sin(rad) * 43;
           return (
-            <svg key={tAngle} className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 176 176">
+            <svg
+              key={tAngle}
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox="0 0 144 144"
+            >
               <line
                 x1={x1}
                 y1={y1}
                 x2={x2}
                 y2={y2}
-                stroke={tAngle === 0 ? '#94a3b8' : '#334155'}
-                strokeWidth={tAngle === 0 ? 2 : 1.5}
+                stroke={tAngle === 0 ? '#737373' : '#404040'}
+                strokeWidth={tAngle === 0 ? 2 : 1}
                 strokeLinecap="round"
               />
             </svg>
           );
         })}
 
-        {/* Interactive Knob */}
+        {/* Center Knob */}
         <div
-          ref={dialRef}
-          onMouseDown={onMouseDown}
-          onTouchStart={onTouchStart}
-          className="relative w-28 h-28 rounded-full cursor-grab active:cursor-grabbing flex items-center justify-center transition-shadow shadow-2xl"
-          style={{
-            background: 'radial-gradient(circle at 35% 35%, #2a3447 0%, #151b27 70%, #0d121c 100%)',
-            boxShadow: `0 8px 24px rgba(0,0,0,0.6), inset 0 2px 4px rgba(255,255,255,0.1), 0 0 16px ${glowColor}`,
-          }}
+          className="relative w-22 h-22 rounded-full flex items-center justify-center bg-neutral-900 border border-neutral-700/80 shadow-lg pointer-events-none"
         >
-          {/* Inner metallic ring */}
-          <div className="absolute inset-2 rounded-full border border-slate-700/60 pointer-events-none" />
-
           {/* Rotating Indicator */}
           <div
-            className="absolute inset-0 flex items-start justify-center pt-2 transition-transform duration-75"
+            className="absolute inset-0 flex items-start justify-center pt-1.5 pointer-events-none"
             style={{ transform: `rotate(${angle}deg)` }}
           >
-            {/* Knob Notch / LED Dot */}
+            {/* LED Dot */}
             <div
-              className="w-2.5 h-2.5 rounded-full shadow-md transition-colors"
+              className="w-2 h-2 rounded-full"
               style={{
-                backgroundColor: activeAccent,
-                boxShadow: `0 0 8px ${activeAccent}`,
+                backgroundColor: accentColor,
+                boxShadow: `0 0 6px ${accentColor}`,
               }}
             />
           </div>
 
-          {/* Center Display */}
-          <div className="relative z-10 flex flex-col items-center justify-center text-center pointer-events-none">
-            <span className="text-lg font-bold font-mono text-slate-100">
+          {/* Value Display */}
+          <div className="flex flex-col items-center justify-center text-center pointer-events-none">
+            <span className="text-base font-bold font-mono text-white">
               {value > 0 ? `+${value}` : value}
             </span>
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider">
-              {value === 0 ? 'Plano' : value < 0 ? labelLeft : labelRight}
+            <span className="text-[9px] text-neutral-400 uppercase tracking-tight">
+              {value === 0 ? '0' : value < 0 ? labelMin : labelMax}
             </span>
           </div>
         </div>
       </div>
 
       {/* Labels below dial */}
-      <div className="w-full flex justify-between items-center px-4 mt-2 text-xs font-medium">
+      <div className="w-full flex justify-between items-center px-2 mt-1 text-[11px] font-medium">
         <button
           type="button"
           onClick={() => onChange(-100)}
-          className={`hover:text-blue-400 transition-colors ${value < -20 ? 'text-blue-400 font-bold' : 'text-slate-400'}`}
+          className={`transition-colors ${
+            value < -20 ? 'text-sky-400 font-bold' : 'text-neutral-500'
+          }`}
         >
-          ◀ {labelLeft}
+          {labelMin}
         </button>
         <button
           type="button"
           onClick={() => onChange(0)}
-          className="text-slate-500 hover:text-slate-300 text-[10px]"
+          className="text-neutral-600 hover:text-neutral-400 text-[10px]"
         >
           0
         </button>
         <button
           type="button"
           onClick={() => onChange(100)}
-          className={`hover:text-blue-400 transition-colors ${value > 20 ? 'text-blue-400 font-bold' : 'text-slate-400'}`}
+          className={`transition-colors ${
+            value > 20 ? 'text-sky-400 font-bold' : 'text-neutral-500'
+          }`}
         >
-          {labelRight} ▶
+          {labelMax}
         </button>
       </div>
     </div>
