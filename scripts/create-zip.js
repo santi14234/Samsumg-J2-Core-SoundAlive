@@ -12,6 +12,9 @@ async function buildZip() {
   zip.file('capacitor.config.json', fs.readFileSync('capacitor.config.json', 'utf8'));
   zip.file('README.md', fs.readFileSync('README.md', 'utf8'));
   zip.file('.gitignore', fs.readFileSync('.gitignore', 'utf8'));
+  if (fs.existsSync('package-lock.json')) {
+    zip.file('package-lock.json', fs.readFileSync('package-lock.json', 'utf8'));
+  }
 
   // Clean lightweight client package.json for building APK
   const clientPackageJson = {
