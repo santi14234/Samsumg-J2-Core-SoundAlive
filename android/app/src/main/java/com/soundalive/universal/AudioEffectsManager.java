@@ -4,7 +4,6 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.media.AudioManager;
 import android.media.AudioPlaybackConfiguration;
-import android.media.audiofx.AudioEffect;
 import android.media.audiofx.BassBoost;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.EnvironmentalReverb;
@@ -37,7 +36,6 @@ public class AudioEffectsManager {
     private final Map<Integer, BassBoost> bassBoosts = new HashMap<>();
     private final Map<Integer, PresetReverb> presetReverbs = new HashMap<>();
     private final Map<Integer, EnvironmentalReverb> envReverbs = new HashMap<>();
-    private final Map<Integer, AudioEffect> customInsertReverbs = new HashMap<>();
 
     private boolean masterEnabled = true;
     private short bassBoostStrength = 0; // 0 - 1000
@@ -55,33 +53,9 @@ public class AudioEffectsManager {
 
     private Context appContext;
 
-    // Discovered NXP hardware insert reverb descriptor
-    private AudioEffect.Descriptor nxpInsertReverbDesc = null;
-
     private AudioEffectsManager() {
         for (short i = 0; i < UI_FREQUENCIES_HZ.length; i++) {
             uiBandLevels.put(i, (short) 0);
-        }
-        findNxpInsertReverb();
-    }
-
-    private void findNxpInsertReverb() {
-        try {
-            AudioEffect.Descriptor[] descs = AudioEffect.queryEffects();
-            if (descs != null) {
-                for (AudioEffect.Descriptor d : descs) {
-                    if (d != null && d.name != null) {
-                        String nameLow = d.name.toLowerCase();
-                        if (nameLow.contains("insert") && nameLow.contains("reverb")) {
-                            nxpInsertReverbDesc = d;
-                            Log.d(TAG, "Found NXP hardware Insert Reverb: " + d.name + " (" + d.uuid + ")");
-                            break;
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "Error querying audio effect descriptors: " + e.getMessage());
         }
     }
 
@@ -193,15 +167,6 @@ public class AudioEffectsManager {
         } catch (Exception e) {
             Log.w(TAG, "Cannot init PresetReverb on session " + sessionId + ": " + e.getMessage());
         }
-
-        // 5. NXP Hardware Insert Reverb (if present on device)
-        if (nxpInsertReverbDesc != null) {
-            try {
-                AudioEffect customRev = new AudioEffect(nxpInsertReverbDesc.type, nxpInsertReverbDesc.uuid, EFFECT_PRIORITY, sessionId);
-                customRev.setEnabled(masterEnabled && ambientSoundEnabled);
-                customInsertReverbs.put(sessionId, customRev);
-            } catch (Exception ignored) {}
-        }
     }
 
     public synchronized void detachSession(int sessionId) {
@@ -219,9 +184,6 @@ public class AudioEffectsManager {
 
         PresetReverb r = presetReverbs.remove(sessionId);
         if (r != null) { try { r.release(); } catch (Exception ignored) {} }
-
-        AudioEffect c = customInsertReverbs.remove(sessionId);
-        if (c != null) { try { c.release(); } catch (Exception ignored) {} }
     }
 
     public synchronized void ensureSession0Alive() {
@@ -249,9 +211,6 @@ public class AudioEffectsManager {
         }
         for (PresetReverb r : presetReverbs.values()) {
             try { r.setEnabled(enabled && ambientSoundEnabled); } catch (Exception ignored) {}
-        }
-        for (AudioEffect c : customInsertReverbs.values()) {
-            try { c.setEnabled(enabled && ambientSoundEnabled); } catch (Exception ignored) {}
         }
         savePreferences();
     }
@@ -407,13 +366,6 @@ public class AudioEffectsManager {
             } catch (Exception ignored) {}
         }
 
-        // 3. Custom NXP Insert Reverb
-        for (AudioEffect c : customInsertReverbs.values()) {
-            try {
-                c.setEnabled(masterEnabled && ambientSoundEnabled);
-            } catch (Exception ignored) {}
-        }
-
         // --- INSTANT UPDATE REBUILD TRICK ---
         // Rapidly toggle the hardware equalizer to force AudioFlinger to apply all parameter buffers instantly
         for (Equalizer eq : equalizers.values()) {
@@ -465,7 +417,6 @@ public class AudioEffectsManager {
         boolean reverbActive = ambientSoundEnabled && masterEnabled;
         boolean hasPreset = !presetReverbs.isEmpty();
         boolean hasEnv = !envReverbs.isEmpty();
-        boolean hasNxpInsert = !customInsertReverbs.isEmpty();
 
         obj.put("concertHallEnabled", ambientSoundEnabled);
         obj.put("ambientSoundEnabled", ambientSoundEnabled);
@@ -476,8 +427,7 @@ public class AudioEffectsManager {
 
         StringBuilder sb = new StringBuilder();
         if (hasEnv) sb.append("EnvironmentalReverb ");
-        if (hasPreset) sb.append("+ PresetReverb ");
-        if (hasNxpInsert) sb.append("+ NXP Hardware Insert");
+        if (hasPreset) sb.append("+ PresetReverb");
         obj.put("concertHallEngine", sb.toString().trim());
 
         obj.put("sessionsCount", activeSessions.size());
@@ -489,9 +439,9 @@ public class AudioEffectsManager {
 
         JSArray enginesArray = new JSArray();
         try {
-            AudioEffect.Descriptor[] descriptors = AudioEffect.queryEffects();
+            android.media.audiofx.AudioEffect.Descriptor[] descriptors = android.media.audiofx.AudioEffect.queryEffects();
             if (descriptors != null) {
-                for (AudioEffect.Descriptor d : descriptors) {
+                for (android.media.audiofx.AudioEffect.Descriptor d : descriptors) {
                     if (d != null && d.name != null) {
                         enginesArray.put(d.name + " (" + d.implementor + ")");
                     }
