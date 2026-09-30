@@ -1,0 +1,6 @@
+{
+  "name": "SoundAlive Web - Ecualizador Samsung",
+  "description": "Recreación universal de Samsung SoundAlive con ecualizador de 9 bandas, perillas de graves/agudos, efectos de válvulas, 3D y sala de conciertos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

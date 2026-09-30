@@ -1,0 +1,9 @@
+{
+	"appId": "com.soundalive.universal",
+	"appName": "SoundAlive",
+	"webDir": "dist",
+	"bundledWebRuntime": false,
+	"server": {
+		"androidScheme": "https"
+	}
+}
