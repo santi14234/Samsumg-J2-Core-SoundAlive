@@ -17,9 +17,18 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Debug build configuration
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = "SoundAlive-Lite.apk"
         }
     }
 }
