@@ -18,6 +18,12 @@ jobs:
         with:
           node-version: 22
 
+      - name: Configurar Java JDK 21 (LTS)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       - name: Instalar dependencias
         run: npm install --legacy-peer-deps
 
@@ -26,15 +32,6 @@ jobs:
 
       - name: Sincronizar proyecto Android con Capacitor
         run: npx cap sync android
-
-      - name: Configurar Java JDK 21 (LTS)
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: Otorgar permisos de ejecución a Gradle
         run: chmod +x android/gradlew
