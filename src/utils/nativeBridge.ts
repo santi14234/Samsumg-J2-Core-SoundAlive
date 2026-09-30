@@ -1,5 +1,23 @@
 import { registerPlugin } from '@capacitor/core';
 
+export interface NativeEffectsStatus {
+  masterEnabled: boolean;
+  equalizerActive: boolean;
+  equalizerBands: number;
+  bassBoostSupported: boolean;
+  bassBoostActive: boolean;
+  bassBoostStrength: number;
+  concertHallEnabled: boolean;
+  concertHallActive: boolean;
+  presetReverbSupported: boolean;
+  envReverbSupported: boolean;
+  roomAcousticSupported: boolean;
+  concertHallEngine: string;
+  sessionsCount: number;
+  activeSessions: number[];
+  hardwareEngines: string[];
+}
+
 interface SoundAliveSystemPlugin {
   canWriteSettings(): Promise<{ canWrite: boolean }>;
   openWriteSettings(): Promise<void>;
@@ -9,6 +27,7 @@ interface SoundAliveSystemPlugin {
   setBassBoost(options: { strength: number }): Promise<void>;
   setSamsungDials(options: { bassTreble: number; vocalInstrument: number }): Promise<void>;
   setConcertHall(options: { enabled: boolean }): Promise<void>;
+  getEffectsStatus(): Promise<NativeEffectsStatus>;
 }
 
 const SoundAliveSystem = registerPlugin<SoundAliveSystemPlugin>('SoundAliveSystem');
@@ -79,5 +98,15 @@ export const syncNativeBandLevel = async (band: number, dbGain: number): Promise
     await SoundAliveSystem.setBandLevel({ band, level });
   } catch (err) {
     console.warn('Native setBandLevel error:', err);
+  }
+};
+
+export const getNativeEffectsStatus = async (): Promise<NativeEffectsStatus | null> => {
+  if (!isNativeAndroidApp()) return null;
+  try {
+    return await SoundAliveSystem.getEffectsStatus();
+  } catch (err) {
+    console.warn('Cannot get native effects status:', err);
+    return null;
   }
 };

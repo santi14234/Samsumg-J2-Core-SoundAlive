@@ -58,6 +58,12 @@ public class SoundAlivePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void getEffectsStatus(PluginCall call) {
+        JSObject status = AudioEffectsManager.getInstance().getStatus();
+        call.resolve(status);
+    }
+
+    @PluginMethod
     public void canWriteSettings(PluginCall call) {
         boolean canWrite = true;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

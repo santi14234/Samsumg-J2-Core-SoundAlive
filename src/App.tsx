@@ -11,6 +11,7 @@ import {
 } from './audio/types';
 import { SoundAliveDials } from './components/SoundAliveDials';
 import { GraphicEqualizer } from './components/GraphicEqualizer';
+import { HardwareStatusCard } from './components/HardwareStatusCard';
 import {
   syncNativeMasterEnabled,
   syncNativeBandLevel,
@@ -265,6 +266,13 @@ export default function App() {
             />
           </button>
         </section>
+
+        {/* Live Hardware Effects Diagnostic requested by user */}
+        <HardwareStatusCard
+          masterEnabled={enabled}
+          concertHallEnabled={concertHall}
+          mode={mode}
+        />
 
         {/* System Active Status Footer */}
         <footer className="flex items-center justify-between text-[11px] text-neutral-500 px-2 py-1">

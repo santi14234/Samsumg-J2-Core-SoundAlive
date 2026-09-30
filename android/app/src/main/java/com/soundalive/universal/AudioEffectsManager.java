@@ -4,14 +4,19 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.media.AudioManager;
 import android.media.AudioPlaybackConfiguration;
+import android.media.audiofx.AudioEffect;
 import android.media.audiofx.BassBoost;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.EnvironmentalReverb;
 import android.media.audiofx.PresetReverb;
+import android.media.audiofx.Virtualizer;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+
+import com.getcapacitor.JSArray;
+import com.getcapacitor.JSObject;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,6 +38,7 @@ public class AudioEffectsManager {
     private final Map<Integer, BassBoost> bassBoosts = new HashMap<>();
     private final Map<Integer, PresetReverb> presetReverbs = new HashMap<>();
     private final Map<Integer, EnvironmentalReverb> envReverbs = new HashMap<>();
+    private final Map<Integer, Virtualizer> virtualizers = new HashMap<>();
 
     private boolean masterEnabled = true;
     private short bassBoostStrength = 0; // 0 - 1000
@@ -42,7 +48,6 @@ public class AudioEffectsManager {
     private int dialVocalInstrument = 0; // -100 (Instrumental) to +100 (Vocal)
     private boolean isBasicMode = true;
 
-    private short reverbPreset = PresetReverb.PRESET_NONE;
     private boolean concertHallEnabled = false;
 
     // Stores the 9 UI band levels (-1000 to +1000 mB)
@@ -72,7 +77,6 @@ public class AudioEffectsManager {
             attachSession(0);
 
             // 2. Android 8.0+ (Oreo / API 26+) System-wide Playback Interceptor:
-            // Intercepts active audio sessions of ALL running apps, including GAMES!
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 try {
                     AudioManager am = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
@@ -93,7 +97,6 @@ public class AudioEffectsManager {
                                         }
                                     } catch (Exception ignored) {}
                                 }
-                                // Re-verify global session 0 is alive
                                 ensureSession0Alive();
                             }
                         }, new Handler(Looper.getMainLooper()));
@@ -140,24 +143,42 @@ public class AudioEffectsManager {
             Log.w(TAG, "Cannot init BassBoost on session " + sessionId + ": " + e.getMessage());
         }
 
-        // 3. EnvironmentalReverb (Pure acoustic reverb, NO 3D Virtualizer)
+        // 3. EnvironmentalReverb (Acoustic auditorium reflection)
         try {
             EnvironmentalReverb env = new EnvironmentalReverb(EFFECT_PRIORITY, sessionId);
-            configureEnvironmentalReverb(env);
+            if (concertHallEnabled) {
+                configureEnvironmentalReverb(env);
+            }
             env.setEnabled(masterEnabled && concertHallEnabled);
             envReverbs.put(sessionId, env);
         } catch (Exception e) {
             Log.w(TAG, "Cannot init EnvironmentalReverb on session " + sessionId + ": " + e.getMessage());
         }
 
-        // 4. PresetReverb (System auxiliary reverb)
+        // 4. PresetReverb (System auxiliary reverb - configured BEFORE enabling)
         try {
             PresetReverb rev = new PresetReverb(EFFECT_PRIORITY, sessionId);
+            if (concertHallEnabled) {
+                rev.setPreset(PresetReverb.PRESET_LARGEHALL);
+            } else {
+                rev.setPreset(PresetReverb.PRESET_NONE);
+            }
             rev.setEnabled(masterEnabled && concertHallEnabled);
-            rev.setPreset(reverbPreset != 0 ? reverbPreset : PresetReverb.PRESET_LARGEHALL);
             presetReverbs.put(sessionId, rev);
         } catch (Exception e) {
             Log.w(TAG, "Cannot init PresetReverb on session " + sessionId + ": " + e.getMessage());
+        }
+
+        // 5. Room Acoustic Spatializer (Subtle natural room width, NOT dizzying 3D)
+        try {
+            Virtualizer virt = new Virtualizer(EFFECT_PRIORITY, sessionId);
+            if (virt.getStrengthSupported()) {
+                virt.setStrength((short) (concertHallEnabled ? 280 : 0));
+            }
+            virt.setEnabled(masterEnabled && concertHallEnabled);
+            virtualizers.put(sessionId, virt);
+        } catch (Exception e) {
+            Log.w(TAG, "Cannot init Virtualizer on session " + sessionId + ": " + e.getMessage());
         }
     }
 
@@ -176,6 +197,9 @@ public class AudioEffectsManager {
 
         PresetReverb r = presetReverbs.remove(sessionId);
         if (r != null) { try { r.release(); } catch (Exception ignored) {} }
+
+        Virtualizer virt = virtualizers.remove(sessionId);
+        if (virt != null) { try { virt.release(); } catch (Exception ignored) {} }
     }
 
     public synchronized void ensureSession0Alive() {
@@ -203,6 +227,9 @@ public class AudioEffectsManager {
         }
         for (PresetReverb r : presetReverbs.values()) {
             try { r.setEnabled(enabled && concertHallEnabled); } catch (Exception ignored) {}
+        }
+        for (Virtualizer virt : virtualizers.values()) {
+            try { virt.setEnabled(enabled && concertHallEnabled); } catch (Exception ignored) {}
         }
         savePreferences();
     }
@@ -344,40 +371,123 @@ public class AudioEffectsManager {
 
     public synchronized void setConcertHall(boolean enabled) {
         this.concertHallEnabled = enabled;
-        this.reverbPreset = enabled ? PresetReverb.PRESET_LARGEHALL : PresetReverb.PRESET_NONE;
 
-        for (EnvironmentalReverb env : envReverbs.values()) {
-            try {
-                env.setEnabled(masterEnabled && concertHallEnabled);
-                if (concertHallEnabled) {
-                    configureEnvironmentalReverb(env);
-                }
-            } catch (Exception ignored) {}
-        }
-
+        // 1. Configure PresetReverb BEFORE enabling
         for (PresetReverb r : presetReverbs.values()) {
             try {
-                r.setEnabled(masterEnabled && concertHallEnabled);
                 if (concertHallEnabled) {
                     r.setPreset(PresetReverb.PRESET_LARGEHALL);
+                    r.setEnabled(masterEnabled);
+                } else {
+                    r.setEnabled(false);
+                    r.setPreset(PresetReverb.PRESET_NONE);
                 }
             } catch (Exception ignored) {}
         }
+
+        // 2. Configure EnvironmentalReverb BEFORE enabling
+        for (EnvironmentalReverb env : envReverbs.values()) {
+            try {
+                if (concertHallEnabled) {
+                    configureEnvironmentalReverb(env);
+                    env.setEnabled(masterEnabled);
+                } else {
+                    env.setEnabled(false);
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 3. Configure Room Acoustic Width
+        for (Virtualizer virt : virtualizers.values()) {
+            try {
+                if (concertHallEnabled) {
+                    if (virt.getStrengthSupported()) {
+                        virt.setStrength((short) 280); // Gentle concert stage width
+                    }
+                    virt.setEnabled(masterEnabled);
+                } else {
+                    virt.setEnabled(false);
+                    if (virt.getStrengthSupported()) {
+                        virt.setStrength((short) 0);
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
         savePreferences();
     }
 
     private void configureEnvironmentalReverb(EnvironmentalReverb env) {
         if (env == null) return;
         try {
-            env.setRoomLevel((short) -200);
-            env.setRoomHFLevel((short) -300);
-            env.setReflectionsLevel((short) -400);
-            env.setReverbLevel((short) 600);
-            env.setDecayTime(3800);
-            env.setDecayHFRatio((short) 850);
+            env.setRoomLevel((short) 0); // 0 mB (Full room reflection)
+            env.setRoomHFLevel((short) -200);
+            env.setReflectionsLevel((short) 600); // Prominent auditorium reflections
+            env.setReverbLevel((short) 1600); // Clearly audible concert reverb (+16dB)
+            env.setDecayTime(3800); // 3.8 seconds decay time (large concert auditorium)
+            env.setDecayHFRatio((short) 900);
         } catch (Exception e) {
             Log.w(TAG, "Error configuring EnvironmentalReverb: " + e.getMessage());
         }
+    }
+
+    /**
+     * Real-time hardware diagnostic method requested by user
+     */
+    public synchronized JSObject getStatus() {
+        JSObject obj = new JSObject();
+        obj.put("masterEnabled", masterEnabled);
+        obj.put("equalizerActive", masterEnabled && !equalizers.isEmpty());
+
+        int physicalBands = 5;
+        Equalizer eq0 = equalizers.get(0);
+        if (eq0 != null) {
+            try { physicalBands = eq0.getNumberOfBands(); } catch (Exception ignored) {}
+        }
+        obj.put("equalizerBands", physicalBands);
+
+        obj.put("bassBoostSupported", !bassBoosts.isEmpty());
+        obj.put("bassBoostActive", masterEnabled && bassBoostStrength > 0);
+        obj.put("bassBoostStrength", bassBoostStrength);
+
+        boolean reverbActive = concertHallEnabled && masterEnabled;
+        boolean hasPreset = !presetReverbs.isEmpty();
+        boolean hasEnv = !envReverbs.isEmpty();
+        boolean hasVirt = !virtualizers.isEmpty();
+
+        obj.put("concertHallEnabled", concertHallEnabled);
+        obj.put("concertHallActive", reverbActive);
+        obj.put("presetReverbSupported", hasPreset);
+        obj.put("envReverbSupported", hasEnv);
+        obj.put("roomAcousticSupported", hasVirt);
+
+        StringBuilder sb = new StringBuilder();
+        if (hasPreset) sb.append("PresetReverb (Hall) ");
+        if (hasEnv) sb.append("+ EnvironmentalReverb ");
+        if (hasVirt) sb.append("+ Acústica Sala");
+        obj.put("concertHallEngine", sb.toString().trim());
+
+        obj.put("sessionsCount", activeSessions.size());
+        JSArray sessArray = new JSArray();
+        for (Integer s : activeSessions) {
+            sessArray.put(s);
+        }
+        obj.put("activeSessions", sessArray);
+
+        JSArray enginesArray = new JSArray();
+        try {
+            AudioEffect.Descriptor[] descriptors = AudioEffect.queryEffects();
+            if (descriptors != null) {
+                for (AudioEffect.Descriptor d : descriptors) {
+                    if (d != null && d.name != null) {
+                        enginesArray.put(d.name + " (" + d.implementor + ")");
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        obj.put("hardwareEngines", enginesArray);
+
+        return obj;
     }
 
     private void savePreferences() {
