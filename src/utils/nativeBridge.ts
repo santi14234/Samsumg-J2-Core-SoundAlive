@@ -92,10 +92,15 @@ export const syncNativeReverb = async (enabled: boolean, size: string): Promise<
     // PresetReverb: 0 = NONE, 1 = SMALLROOM, 2 = MEDIUMROOM, 3 = LARGEROOM, 4 = MEDIUMHALL, 5 = LARGEHALL, 6 = PLATE
     let preset = 0;
     if (enabled) {
-      if (size === 'room') preset = 1;
-      else if (size === 'hall') preset = 4;
-      else if (size === 'auditorium') preset = 5;
-      else preset = 2;
+      if (size === 'club' || size === 'room') {
+        preset = 2; // MEDIUMROOM
+      } else if (size === 'auditorium' || size === 'hall') {
+        preset = 5; // LARGEHALL
+      } else if (size === 'cathedral') {
+        preset = 5; // LARGEHALL (Cathedral)
+      } else {
+        preset = 5;
+      }
     }
     await SoundAliveSystem.setReverb({ preset });
   } catch (err) {
