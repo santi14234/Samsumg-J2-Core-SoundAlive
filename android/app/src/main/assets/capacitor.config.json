@@ -1,6 +1,6 @@
 {
 	"appId": "com.soundalive.universal",
-	"appName": "SoundAlive",
+	"appName": "SoundAlive Lite",
 	"webDir": "dist",
 	"bundledWebRuntime": false,
 	"server": {
