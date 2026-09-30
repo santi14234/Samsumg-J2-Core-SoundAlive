@@ -71,6 +71,10 @@ async function buildZip() {
     addDir('src', zip.folder('src'));
   }
 
+  if (fs.existsSync('android/app/src')) {
+    addDir('android/app/src', zip.folder('android/app/src'));
+  }
+
   fs.mkdirSync('public', { recursive: true });
   const content = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
   fs.writeFileSync('public/SoundAlive-Galaxy-J2-Core-Proyecto.zip', content);

@@ -12,7 +12,16 @@ import {
   Copy,
   Check,
   ExternalLink,
+  Settings2,
+  ShieldCheck,
+  RefreshCw,
+  Power,
 } from 'lucide-react';
+import {
+  isNativeAndroidApp,
+  openWriteSettingsScreen,
+  startNativeBackgroundService,
+} from '../utils/nativeBridge';
 
 interface J2CoreInfoModalProps {
   isOpen: boolean;
@@ -20,10 +29,21 @@ interface J2CoreInfoModalProps {
 }
 
 export const J2CoreInfoModal: React.FC<J2CoreInfoModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'pwa' | 'github'>('pwa');
+  const [activeTab, setActiveTab] = useState<'pwa' | 'github' | 'permissions'>('pwa');
   const [copied, setCopied] = useState(false);
+  const [serviceStatus, setServiceStatus] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const handleOpenSettings = async () => {
+    await openWriteSettingsScreen();
+  };
+
+  const handleStartService = async () => {
+    await startNativeBackgroundService();
+    setServiceStatus('¡Servicio en segundo plano iniciado!');
+    setTimeout(() => setServiceStatus(null), 3500);
+  };
 
   const githubSteps = [
     {
@@ -140,30 +160,42 @@ jobs:
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex rounded-xl bg-[#0b0f19] p-1 border border-slate-800 mb-4">
+        <div className="flex rounded-xl bg-[#0b0f19] p-1 border border-slate-800 mb-4 gap-1">
           <button
             type="button"
             onClick={() => setActiveTab('pwa')}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-1.5 text-[11px] sm:text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${
               activeTab === 'pwa'
                 ? 'bg-cyan-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <Smartphone className="w-3.5 h-3.5" />
-            Instalación Rápida (PWA)
+            PWA
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('github')}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-1.5 text-[11px] sm:text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${
               activeTab === 'github'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <Github className="w-3.5 h-3.5" />
-            Compilar APK en GitHub
+            Compilar APK
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('permissions')}
+            className={`flex-1 py-1.5 text-[11px] sm:text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${
+              activeTab === 'permissions'
+                ? 'bg-purple-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            Ajustes & 2do Plano
           </button>
         </div>
 
@@ -216,7 +248,7 @@ jobs:
               </div>
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'github' ? (
           <div>
             {/* Direct GitHub Repo Card */}
             <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-700/60 mb-4 flex items-center justify-between gap-3">
@@ -295,6 +327,99 @@ jobs:
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        ) : (
+          /* Permissions & Background Service Tab */
+          <div>
+            <div className="p-3.5 rounded-2xl bg-purple-950/30 border border-purple-800/40 mb-4">
+              <div className="flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-xs font-bold text-purple-200">
+                    Permisos de Sistema & 2do Plano Configurados
+                  </h4>
+                  <p className="text-[11px] text-purple-300/80 mt-1 leading-relaxed">
+                    Hemos integrado en el <code>AndroidManifest.xml</code> y en el código nativo de Android los permisos y servicios requeridos para Samsung Galaxy J2 Core.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {serviceStatus && (
+              <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-700/60 text-emerald-300 text-xs font-medium mb-3 flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400" />
+                {serviceStatus}
+              </div>
+            )}
+
+            <div className="space-y-3 mb-6">
+              {/* Permission 1: WRITE_SETTINGS */}
+              <div className="p-3 rounded-xl bg-[#161f33] border border-slate-800">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <Settings2 className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-xs font-bold text-slate-200 block">
+                        Modificar ajustes del sistema (WRITE_SETTINGS)
+                      </span>
+                      <span className="text-[11px] text-slate-400 mt-0.5 block leading-relaxed">
+                        Permite a SoundAlive controlar los ajustes globales de audio y sonido. En tu J2 Core aparece en: <em>Ajustes → Aplicaciones → Acceso especial → Modificar ajustes de sistema</em>.
+                      </span>
+                    </div>
+                  </div>
+                  {isNativeAndroidApp() && (
+                    <button
+                      type="button"
+                      onClick={handleOpenSettings}
+                      className="px-2.5 py-1 text-[11px] rounded bg-purple-600 hover:bg-purple-500 text-white font-medium shrink-0"
+                    >
+                      Abrir Ajustes
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Permission 2: FOREGROUND_SERVICE */}
+              <div className="p-3 rounded-xl bg-[#161f33] border border-slate-800">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <Power className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-xs font-bold text-slate-200 block">
+                        Ejecución en segundo plano persistente
+                      </span>
+                      <span className="text-[11px] text-slate-400 mt-0.5 block leading-relaxed">
+                        Configurado con <code>SoundAliveService</code> (Foreground Service de Audio). No se cerrará cuando cambies de app o apagues la pantalla.
+                      </span>
+                    </div>
+                  </div>
+                  {isNativeAndroidApp() && (
+                    <button
+                      type="button"
+                      onClick={handleStartService}
+                      className="px-2.5 py-1 text-[11px] rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium shrink-0"
+                    >
+                      Iniciar Servicio
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Permission 3: BOOT_COMPLETED */}
+              <div className="p-3 rounded-xl bg-[#161f33] border border-slate-800">
+                <div className="flex items-start gap-2.5">
+                  <RefreshCw className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-xs font-bold text-slate-200 block">
+                      Iniciar al reiniciar el celular (BOOT_COMPLETED)
+                    </span>
+                    <span className="text-[11px] text-slate-400 mt-0.5 block leading-relaxed">
+                      Se programó el receptor nativo <code>BootReceiver</code> para revivir el servicio en cuanto el Samsung Galaxy J2 Core encienda o reinicie.
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
