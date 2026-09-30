@@ -90,6 +90,8 @@ export const syncNativeConcertHall = async (enabled: boolean): Promise<void> => 
   }
 };
 
+export const syncNativeAmbientSound = syncNativeConcertHall;
+
 export const syncNativeBandLevel = async (band: number, dbGain: number): Promise<void> => {
   if (!isNativeAndroidApp()) return;
   try {

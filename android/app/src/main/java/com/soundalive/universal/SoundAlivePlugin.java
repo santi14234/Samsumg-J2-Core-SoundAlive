@@ -43,6 +43,13 @@ public class SoundAlivePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setAmbientSound(PluginCall call) {
+        boolean enabled = call.getBoolean("enabled", false);
+        AudioEffectsManager.getInstance().setAmbientSound(enabled);
+        call.resolve();
+    }
+
+    @PluginMethod
     public void setBandLevel(PluginCall call) {
         int band = call.getInt("band", 0);
         int level = call.getInt("level", 0); // in millibels, e.g. -1000 to 1000

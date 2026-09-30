@@ -227,7 +227,7 @@ export default function App() {
           )}
         </main>
 
-        {/* Sala de Conciertos (Pure Reverb Toggle) */}
+        {/* Sonido Ambiental (Pure Reverb / FxSound Ambience - Zero Virtualizer) */}
         <section className="bg-black border border-neutral-800 rounded-2xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
@@ -241,10 +241,10 @@ export default function App() {
             </div>
             <div>
               <span className="text-sm font-semibold text-neutral-200 block">
-                Sala de conciertos
+                Sonido Ambiental
               </span>
               <span className="text-xs text-neutral-500 block">
-                Simula la acústica y reverberación de un auditorio
+                Reverberación acústica natural de entorno (estilo FxSound)
               </span>
             </div>
           </div>

@@ -158,16 +158,16 @@ export const HardwareStatusCard: React.FC<HardwareStatusCardProps> = ({
           )}
         </div>
 
-        {/* Sala de Conciertos Status */}
+        {/* Sonido Ambiental (Pure Reverb / FxSound Ambience) Status */}
         <div className="bg-neutral-950 border border-neutral-800/80 rounded-xl p-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-3.5 h-3.5 text-neutral-400" />
             <div>
               <span className="text-[11px] text-neutral-300 font-medium block">
-                Sala Conciertos
+                Sonido Ambiental
               </span>
               <span className="text-[10px] text-neutral-500 block truncate max-w-[110px]">
-                {status.concertHallActive ? 'Reverb Auditorio' : 'Apagado'}
+                {status.concertHallActive ? 'Reverb FxSound' : 'Apagado'}
               </span>
             </div>
           </div>
@@ -217,6 +217,20 @@ export const HardwareStatusCard: React.FC<HardwareStatusCardProps> = ({
             )}
           </div>
         )}
+      </div>
+
+      {/* Emulator Driver Configuration Note */}
+      <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl p-3 flex flex-col gap-1 text-left mt-1">
+        <div className="flex items-center gap-1.5 text-sky-400 font-semibold text-xs">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>Aviso para Emuladores (MD.emu, RetroArch, etc.):</span>
+        </div>
+        <p className="text-[11px] text-neutral-300 leading-snug">
+          Si tu emulador tiene <code className="text-sky-300 bg-sky-950/80 px-1 py-0.5 rounded font-mono">Audio Driver: AAudio</code>, este puentea directamente el chip de sonido para latencia cero y se salta el ecualizador del sistema.
+        </p>
+        <p className="text-[11px] text-neutral-300 leading-snug">
+          👉 <strong>Solución:</strong> En Audio Options de tu emulador, cambia <em>Audio Driver</em> a <strong className="text-emerald-400">AudioTrack</strong> (o <em>OpenSL ES</em>). ¡Al instante el ecualizador y la reverberación procesarán todo el juego!
+        </p>
       </div>
     </section>
   );

@@ -9,7 +9,6 @@ import android.media.audiofx.BassBoost;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.EnvironmentalReverb;
 import android.media.audiofx.PresetReverb;
-import android.media.audiofx.Virtualizer;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -27,10 +26,10 @@ import java.util.Set;
 public class AudioEffectsManager {
     private static final String TAG = "SoundAliveEffects";
     private static final String PREFS_NAME = "SoundAliveAudioPrefs";
-    private static final int EFFECT_PRIORITY = 1000; // High priority so games & other apps don't override
+    private static final int EFFECT_PRIORITY = 1000; // High priority
     private static AudioEffectsManager instance;
 
-    // Frequencies of the UI bands
+    // Frequencies of the UI bands (63Hz to 16kHz)
     public static final int[] UI_FREQUENCIES_HZ = {63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000};
 
     private final Set<Integer> activeSessions = new HashSet<>();
@@ -38,26 +37,51 @@ public class AudioEffectsManager {
     private final Map<Integer, BassBoost> bassBoosts = new HashMap<>();
     private final Map<Integer, PresetReverb> presetReverbs = new HashMap<>();
     private final Map<Integer, EnvironmentalReverb> envReverbs = new HashMap<>();
-    private final Map<Integer, Virtualizer> virtualizers = new HashMap<>();
+    private final Map<Integer, AudioEffect> customInsertReverbs = new HashMap<>();
 
     private boolean masterEnabled = true;
     private short bassBoostStrength = 0; // 0 - 1000
 
     // Dual Samsung Dials values (-100 to +100)
-    private int dialBassTreble = 0; // -100 (Bass) to +100 (Treble)
-    private int dialVocalInstrument = 0; // -100 (Instrumental) to +100 (Vocal)
+    private int dialBassTreble = 0;
+    private int dialVocalInstrument = 0;
     private boolean isBasicMode = true;
 
-    private boolean concertHallEnabled = false;
+    // Sonido Ambiental (Pure Reverb / FxSound Ambience - NO VIRTUALIZERS)
+    private boolean ambientSoundEnabled = false;
 
     // Stores the 9 UI band levels (-1000 to +1000 mB)
     private final Map<Short, Short> uiBandLevels = new HashMap<>();
 
     private Context appContext;
 
+    // Discovered NXP hardware insert reverb descriptor
+    private AudioEffect.Descriptor nxpInsertReverbDesc = null;
+
     private AudioEffectsManager() {
         for (short i = 0; i < UI_FREQUENCIES_HZ.length; i++) {
             uiBandLevels.put(i, (short) 0);
+        }
+        findNxpInsertReverb();
+    }
+
+    private void findNxpInsertReverb() {
+        try {
+            AudioEffect.Descriptor[] descs = AudioEffect.queryEffects();
+            if (descs != null) {
+                for (AudioEffect.Descriptor d : descs) {
+                    if (d != null && d.name != null) {
+                        String nameLow = d.name.toLowerCase();
+                        if (nameLow.contains("insert") && nameLow.contains("reverb")) {
+                            nxpInsertReverbDesc = d;
+                            Log.d(TAG, "Found NXP hardware Insert Reverb: " + d.name + " (" + d.uuid + ")");
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error querying audio effect descriptors: " + e.getMessage());
         }
     }
 
@@ -76,7 +100,7 @@ public class AudioEffectsManager {
             // 1. Attach to session 0 (Global audio output mix)
             attachSession(0);
 
-            // 2. Android 8.0+ (Oreo / API 26+) System-wide Playback Interceptor:
+            // 2. Android 8.0+ System-wide Playback Interceptor:
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 try {
                     AudioManager am = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
@@ -114,6 +138,7 @@ public class AudioEffectsManager {
             if (eq != null) {
                 try {
                     if (!eq.getEnabled()) eq.setEnabled(masterEnabled);
+                    applyAllBandsToEqualizer(eq);
                 } catch (Exception ignored) {}
             }
             return;
@@ -126,7 +151,7 @@ public class AudioEffectsManager {
             eq.setEnabled(masterEnabled);
             applyAllBandsToEqualizer(eq);
             equalizers.put(sessionId, eq);
-            Log.d(TAG, "Equalizer attached to session: " + sessionId);
+            Log.d(TAG, "Equalizer attached to session " + sessionId);
         } catch (Exception e) {
             Log.w(TAG, "Cannot init Equalizer on session " + sessionId + ": " + e.getMessage());
         }
@@ -143,42 +168,39 @@ public class AudioEffectsManager {
             Log.w(TAG, "Cannot init BassBoost on session " + sessionId + ": " + e.getMessage());
         }
 
-        // 3. EnvironmentalReverb (Acoustic auditorium reflection)
+        // 3. EnvironmentalReverb (Pure Ambient Sound / Sonido Ambiental)
         try {
             EnvironmentalReverb env = new EnvironmentalReverb(EFFECT_PRIORITY, sessionId);
-            if (concertHallEnabled) {
+            if (ambientSoundEnabled) {
                 configureEnvironmentalReverb(env);
             }
-            env.setEnabled(masterEnabled && concertHallEnabled);
+            env.setEnabled(masterEnabled && ambientSoundEnabled);
             envReverbs.put(sessionId, env);
         } catch (Exception e) {
             Log.w(TAG, "Cannot init EnvironmentalReverb on session " + sessionId + ": " + e.getMessage());
         }
 
-        // 4. PresetReverb (System auxiliary reverb - configured BEFORE enabling)
+        // 4. PresetReverb (configured BEFORE enabling)
         try {
             PresetReverb rev = new PresetReverb(EFFECT_PRIORITY, sessionId);
-            if (concertHallEnabled) {
+            if (ambientSoundEnabled) {
                 rev.setPreset(PresetReverb.PRESET_LARGEHALL);
             } else {
                 rev.setPreset(PresetReverb.PRESET_NONE);
             }
-            rev.setEnabled(masterEnabled && concertHallEnabled);
+            rev.setEnabled(masterEnabled && ambientSoundEnabled);
             presetReverbs.put(sessionId, rev);
         } catch (Exception e) {
             Log.w(TAG, "Cannot init PresetReverb on session " + sessionId + ": " + e.getMessage());
         }
 
-        // 5. Room Acoustic Spatializer (Subtle natural room width, NOT dizzying 3D)
-        try {
-            Virtualizer virt = new Virtualizer(EFFECT_PRIORITY, sessionId);
-            if (virt.getStrengthSupported()) {
-                virt.setStrength((short) (concertHallEnabled ? 280 : 0));
-            }
-            virt.setEnabled(masterEnabled && concertHallEnabled);
-            virtualizers.put(sessionId, virt);
-        } catch (Exception e) {
-            Log.w(TAG, "Cannot init Virtualizer on session " + sessionId + ": " + e.getMessage());
+        // 5. NXP Hardware Insert Reverb (if present on device)
+        if (nxpInsertReverbDesc != null) {
+            try {
+                AudioEffect customRev = new AudioEffect(nxpInsertReverbDesc.type, nxpInsertReverbDesc.uuid, EFFECT_PRIORITY, sessionId);
+                customRev.setEnabled(masterEnabled && ambientSoundEnabled);
+                customInsertReverbs.put(sessionId, customRev);
+            } catch (Exception ignored) {}
         }
     }
 
@@ -198,8 +220,8 @@ public class AudioEffectsManager {
         PresetReverb r = presetReverbs.remove(sessionId);
         if (r != null) { try { r.release(); } catch (Exception ignored) {} }
 
-        Virtualizer virt = virtualizers.remove(sessionId);
-        if (virt != null) { try { virt.release(); } catch (Exception ignored) {} }
+        AudioEffect c = customInsertReverbs.remove(sessionId);
+        if (c != null) { try { c.release(); } catch (Exception ignored) {} }
     }
 
     public synchronized void ensureSession0Alive() {
@@ -223,22 +245,17 @@ public class AudioEffectsManager {
             try { bb.setEnabled(enabled && bassBoostStrength > 0); } catch (Exception ignored) {}
         }
         for (EnvironmentalReverb env : envReverbs.values()) {
-            try { env.setEnabled(enabled && concertHallEnabled); } catch (Exception ignored) {}
+            try { env.setEnabled(enabled && ambientSoundEnabled); } catch (Exception ignored) {}
         }
         for (PresetReverb r : presetReverbs.values()) {
-            try { r.setEnabled(enabled && concertHallEnabled); } catch (Exception ignored) {}
+            try { r.setEnabled(enabled && ambientSoundEnabled); } catch (Exception ignored) {}
         }
-        for (Virtualizer virt : virtualizers.values()) {
-            try { virt.setEnabled(enabled && concertHallEnabled); } catch (Exception ignored) {}
+        for (AudioEffect c : customInsertReverbs.values()) {
+            try { c.setEnabled(enabled && ambientSoundEnabled); } catch (Exception ignored) {}
         }
         savePreferences();
     }
 
-    /**
-     * Samsung Dual Dials adjustment (Basic Mode):
-     * dialBassTreble: -100 (Bass) to +100 (Treble)
-     * dialVocalInstrument: -100 (Instrument) to +100 (Vocal)
-     */
     public synchronized void setSamsungDials(int bassTreble, int vocalInstrument) {
         this.isBasicMode = true;
         this.dialBassTreble = Math.max(-100, Math.min(100, bassTreble));
@@ -247,10 +264,10 @@ public class AudioEffectsManager {
         double btNorm = this.dialBassTreble / 100.0;
         double viNorm = this.dialVocalInstrument / 100.0;
 
-        short bassLevel = (short) Math.round(-btNorm * 700);
-        short trebleLevel = (short) Math.round(btNorm * 700);
-        short vocalLevel = (short) Math.round(viNorm * 700);
-        short instLevel = (short) Math.round(-viNorm * 500);
+        short bassLevel = (short) Math.round(-btNorm * 800);
+        short trebleLevel = (short) Math.round(btNorm * 800);
+        short vocalLevel = (short) Math.round(viNorm * 800);
+        short instLevel = (short) Math.round(-viNorm * 600);
 
         uiBandLevels.put((short) 0, (short) (bassLevel + instLevel));       // 63Hz
         uiBandLevels.put((short) 1, (short) (bassLevel * 0.8 + instLevel * 0.5)); // 125Hz
@@ -263,7 +280,7 @@ public class AudioEffectsManager {
         uiBandLevels.put((short) 8, (short) (trebleLevel + instLevel));     // 16kHz
 
         if (btNorm < 0) {
-            this.bassBoostStrength = (short) Math.round(-btNorm * 800);
+            this.bassBoostStrength = (short) Math.round(-btNorm * 900);
         } else {
             this.bassBoostStrength = 0;
         }
@@ -306,6 +323,18 @@ public class AudioEffectsManager {
         savePreferences();
     }
 
+    private short getUiVal(int index) {
+        Short val = uiBandLevels.get((short) index);
+        return (val != null) ? val : 0;
+    }
+
+    private short clamp(short val, short min, short max) {
+        return (short) Math.max(min, Math.min(max, val));
+    }
+
+    /**
+     * Direct 5-band physical hardware mapping for Samsung Galaxy J2 Core
+     */
     private void applyAllBandsToEqualizer(Equalizer eq) {
         if (eq == null) return;
         try {
@@ -314,54 +343,32 @@ public class AudioEffectsManager {
             short minLvl = range[0];
             short maxLvl = range[1];
 
-            if (numPhysicalBands >= 9) {
-                for (short b = 0; b < numPhysicalBands && b < UI_FREQUENCIES_HZ.length; b++) {
-                    Short val = uiBandLevels.get(b);
-                    short lvl = (val != null) ? val : 0;
-                    short clamped = (short) Math.max(minLvl, Math.min(maxLvl, lvl));
-                    eq.setBandLevel(b, clamped);
-                }
+            if (numPhysicalBands == 5) {
+                // Band 0: ~60 Hz (Deep Sub-Bass) -> UI 63Hz & 125Hz
+                short b0 = (short) Math.round((getUiVal(0) * 0.6) + (getUiVal(1) * 0.4));
+                eq.setBandLevel((short) 0, clamp(b0, minLvl, maxLvl));
+
+                // Band 1: ~230 Hz (Punch / Low-Mids) -> UI 250Hz
+                short b1 = getUiVal(2);
+                eq.setBandLevel((short) 1, clamp(b1, minLvl, maxLvl));
+
+                // Band 2: ~910 Hz (Vocals / Body) -> UI 500Hz & 1kHz
+                short b2 = (short) Math.round((getUiVal(3) * 0.5) + (getUiVal(4) * 0.5));
+                eq.setBandLevel((short) 2, clamp(b2, minLvl, maxLvl));
+
+                // Band 3: ~3.6 kHz (Presence / Clarity) -> UI 2kHz & 4kHz
+                short b3 = (short) Math.round((getUiVal(5) * 0.5) + (getUiVal(6) * 0.5));
+                eq.setBandLevel((short) 3, clamp(b3, minLvl, maxLvl));
+
+                // Band 4: ~14 kHz (Air / Brilliance) -> UI 8kHz & 16kHz
+                short b4 = (short) Math.round((getUiVal(7) * 0.4) + (getUiVal(8) * 0.6));
+                eq.setBandLevel((short) 4, clamp(b4, minLvl, maxLvl));
+
+                Log.d(TAG, String.format("Mapped 5 bands: [%d, %d, %d, %d, %d]", b0, b1, b2, b3, b4));
             } else {
-                for (short p = 0; p < numPhysicalBands; p++) {
-                    int centerFreqHz = eq.getCenterFreq(p) / 1000;
-                    int[] bandSpan = eq.getBandFreqRange(p);
-                    int minSpanHz = bandSpan[0] / 1000;
-                    int maxSpanHz = bandSpan[1] / 1000;
-
-                    double totalWeight = 0;
-                    double weightedSum = 0;
-
-                    for (int u = 0; u < UI_FREQUENCIES_HZ.length; u++) {
-                        int uiFreq = UI_FREQUENCIES_HZ[u];
-                        Short uiVal = uiBandLevels.get((short) u);
-                        double val = (uiVal != null) ? uiVal : 0.0;
-
-                        if (uiFreq >= minSpanHz && uiFreq <= maxSpanHz) {
-                            double dist = Math.abs(Math.log(Math.max(1, uiFreq)) - Math.log(Math.max(1, centerFreqHz)));
-                            double weight = 1.0 / (1.0 + dist * 2.0);
-                            weightedSum += val * weight;
-                            totalWeight += weight;
-                        }
-                    }
-
-                    if (totalWeight <= 0) {
-                        int bestU = 0;
-                        double bestDist = Double.MAX_VALUE;
-                        for (int u = 0; u < UI_FREQUENCIES_HZ.length; u++) {
-                            double dist = Math.abs(Math.log(UI_FREQUENCIES_HZ[u]) - Math.log(Math.max(1, centerFreqHz)));
-                            if (dist < bestDist) {
-                                bestDist = dist;
-                                bestU = u;
-                            }
-                        }
-                        Short uiVal = uiBandLevels.get((short) bestU);
-                        weightedSum = (uiVal != null) ? uiVal : 0.0;
-                        totalWeight = 1.0;
-                    }
-
-                    short targetLevel = (short) Math.round(weightedSum / totalWeight);
-                    short clamped = (short) Math.max(minLvl, Math.min(maxLvl, targetLevel));
-                    eq.setBandLevel(p, clamped);
+                for (short b = 0; b < numPhysicalBands && b < UI_FREQUENCIES_HZ.length; b++) {
+                    short lvl = getUiVal(b);
+                    eq.setBandLevel(b, clamp(lvl, minLvl, maxLvl));
                 }
             }
         } catch (Exception e) {
@@ -369,13 +376,16 @@ public class AudioEffectsManager {
         }
     }
 
-    public synchronized void setConcertHall(boolean enabled) {
-        this.concertHallEnabled = enabled;
+    /**
+     * Sonido Ambiental (Pure Reverb / FxSound Ambience - Zero Virtualizer)
+     */
+    public synchronized void setAmbientSound(boolean enabled) {
+        this.ambientSoundEnabled = enabled;
 
-        // 1. Configure PresetReverb BEFORE enabling
+        // 1. PresetReverb (setPreset BEFORE setEnabled)
         for (PresetReverb r : presetReverbs.values()) {
             try {
-                if (concertHallEnabled) {
+                if (ambientSoundEnabled) {
                     r.setPreset(PresetReverb.PRESET_LARGEHALL);
                     r.setEnabled(masterEnabled);
                 } else {
@@ -385,10 +395,10 @@ public class AudioEffectsManager {
             } catch (Exception ignored) {}
         }
 
-        // 2. Configure EnvironmentalReverb BEFORE enabling
+        // 2. EnvironmentalReverb (Warm FxSound Ambience natural room acoustics)
         for (EnvironmentalReverb env : envReverbs.values()) {
             try {
-                if (concertHallEnabled) {
+                if (ambientSoundEnabled) {
                     configureEnvironmentalReverb(env);
                     env.setEnabled(masterEnabled);
                 } else {
@@ -397,43 +407,36 @@ public class AudioEffectsManager {
             } catch (Exception ignored) {}
         }
 
-        // 3. Configure Room Acoustic Width
-        for (Virtualizer virt : virtualizers.values()) {
+        // 3. Custom NXP Insert Reverb
+        for (AudioEffect c : customInsertReverbs.values()) {
             try {
-                if (concertHallEnabled) {
-                    if (virt.getStrengthSupported()) {
-                        virt.setStrength((short) 280); // Gentle concert stage width
-                    }
-                    virt.setEnabled(masterEnabled);
-                } else {
-                    virt.setEnabled(false);
-                    if (virt.getStrengthSupported()) {
-                        virt.setStrength((short) 0);
-                    }
-                }
+                c.setEnabled(masterEnabled && ambientSoundEnabled);
             } catch (Exception ignored) {}
         }
 
         savePreferences();
     }
 
+    // Alias for compatibility
+    public synchronized void setConcertHall(boolean enabled) {
+        setAmbientSound(enabled);
+    }
+
     private void configureEnvironmentalReverb(EnvironmentalReverb env) {
         if (env == null) return;
         try {
-            env.setRoomLevel((short) 0); // 0 mB (Full room reflection)
-            env.setRoomHFLevel((short) -200);
-            env.setReflectionsLevel((short) 600); // Prominent auditorium reflections
-            env.setReverbLevel((short) 1600); // Clearly audible concert reverb (+16dB)
-            env.setDecayTime(3800); // 3.8 seconds decay time (large concert auditorium)
-            env.setDecayHFRatio((short) 900);
+            // Natural, warm room ambiance (like FxSound Ambience)
+            env.setRoomLevel((short) 0); // 0 mB (Full room volume)
+            env.setRoomHFLevel((short) -300); // Warm natural high-end rolloff
+            env.setReflectionsLevel((short) 600); // Smooth early reflections
+            env.setReverbLevel((short) 1800); // Lush, warm ambient reverb (+18 dB)
+            env.setDecayTime(2600); // 2.6 seconds decay time (warm ambient space)
+            env.setDecayHFRatio((short) 850);
         } catch (Exception e) {
             Log.w(TAG, "Error configuring EnvironmentalReverb: " + e.getMessage());
         }
     }
 
-    /**
-     * Real-time hardware diagnostic method requested by user
-     */
     public synchronized JSObject getStatus() {
         JSObject obj = new JSObject();
         obj.put("masterEnabled", masterEnabled);
@@ -450,21 +453,22 @@ public class AudioEffectsManager {
         obj.put("bassBoostActive", masterEnabled && bassBoostStrength > 0);
         obj.put("bassBoostStrength", bassBoostStrength);
 
-        boolean reverbActive = concertHallEnabled && masterEnabled;
+        boolean reverbActive = ambientSoundEnabled && masterEnabled;
         boolean hasPreset = !presetReverbs.isEmpty();
         boolean hasEnv = !envReverbs.isEmpty();
-        boolean hasVirt = !virtualizers.isEmpty();
+        boolean hasNxpInsert = !customInsertReverbs.isEmpty();
 
-        obj.put("concertHallEnabled", concertHallEnabled);
+        obj.put("concertHallEnabled", ambientSoundEnabled);
+        obj.put("ambientSoundEnabled", ambientSoundEnabled);
         obj.put("concertHallActive", reverbActive);
         obj.put("presetReverbSupported", hasPreset);
         obj.put("envReverbSupported", hasEnv);
-        obj.put("roomAcousticSupported", hasVirt);
+        obj.put("roomAcousticSupported", false); // ZERO virtualizer
 
         StringBuilder sb = new StringBuilder();
-        if (hasPreset) sb.append("PresetReverb (Hall) ");
-        if (hasEnv) sb.append("+ EnvironmentalReverb ");
-        if (hasVirt) sb.append("+ Acústica Sala");
+        if (hasEnv) sb.append("EnvironmentalReverb ");
+        if (hasPreset) sb.append("+ PresetReverb ");
+        if (hasNxpInsert) sb.append("+ NXP Hardware Insert");
         obj.put("concertHallEngine", sb.toString().trim());
 
         obj.put("sessionsCount", activeSessions.size());
@@ -496,7 +500,8 @@ public class AudioEffectsManager {
             SharedPreferences sp = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             SharedPreferences.Editor ed = sp.edit();
             ed.putBoolean("masterEnabled", masterEnabled);
-            ed.putBoolean("concertHall", concertHallEnabled);
+            ed.putBoolean("ambientSound", ambientSoundEnabled);
+            ed.putBoolean("concertHall", ambientSoundEnabled);
             ed.putBoolean("isBasicMode", isBasicMode);
             ed.putInt("dialBassTreble", dialBassTreble);
             ed.putInt("dialVocalInstrument", dialVocalInstrument);
@@ -512,7 +517,7 @@ public class AudioEffectsManager {
         try {
             SharedPreferences sp = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             masterEnabled = sp.getBoolean("masterEnabled", true);
-            concertHallEnabled = sp.getBoolean("concertHall", false);
+            ambientSoundEnabled = sp.getBoolean("ambientSound", sp.getBoolean("concertHall", false));
             isBasicMode = sp.getBoolean("isBasicMode", true);
             dialBassTreble = sp.getInt("dialBassTreble", 0);
             dialVocalInstrument = sp.getInt("dialVocalInstrument", 0);
