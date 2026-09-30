@@ -1,6 +1,7 @@
 package com.soundalive.universal;
 
 import android.content.Intent;
+import android.media.audiofx.AudioEffect;
 import android.os.Build;
 import android.os.Bundle;
 import androidx.core.content.ContextCompat;
@@ -12,6 +13,11 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SoundAlivePlugin.class);
         super.onCreate(savedInstanceState);
 
+        AudioEffectsManager.getInstance().init(this);
+
+        // Check if opened from an external music player with a specific audio session
+        handleIntent(getIntent());
+
         try {
             Intent serviceIntent = new Intent(this, SoundAliveService.class);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -21,6 +27,20 @@ public class MainActivity extends BridgeActivity {
             }
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleIntent(intent);
+    }
+
+    private void handleIntent(Intent intent) {
+        if (intent == null) return;
+        int sessionId = intent.getIntExtra(AudioEffect.EXTRA_AUDIO_SESSION, AudioEffect.ERROR_BAD_VALUE);
+        if (sessionId != AudioEffect.ERROR_BAD_VALUE) {
+            AudioEffectsManager.getInstance().attachSession(sessionId);
         }
     }
 }

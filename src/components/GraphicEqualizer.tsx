@@ -31,7 +31,7 @@ export const GraphicEqualizer: React.FC<GraphicEqualizerProps> = ({
   }).join(' ');
 
   return (
-    <div className="bg-[#121826]/90 border border-slate-800/80 rounded-3xl p-5 shadow-xl backdrop-blur-md">
+    <div className="bg-[#111726] border border-slate-800 rounded-2xl p-4 shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-sm font-semibold tracking-wider uppercase text-slate-300">

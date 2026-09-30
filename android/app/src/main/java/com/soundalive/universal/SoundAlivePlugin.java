@@ -14,6 +14,48 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "SoundAliveSystem")
 public class SoundAlivePlugin extends Plugin {
 
+    @Override
+    public void load() {
+        super.load();
+        AudioEffectsManager.getInstance().init(getContext());
+    }
+
+    @PluginMethod
+    public void setMasterEnabled(PluginCall call) {
+        boolean enabled = call.getBoolean("enabled", true);
+        AudioEffectsManager.getInstance().setMasterEnabled(enabled);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setBandLevel(PluginCall call) {
+        int band = call.getInt("band", 0);
+        int level = call.getInt("level", 0); // in millibels, e.g. -1500 to 1500 (or dB * 100)
+        AudioEffectsManager.getInstance().setBandLevel((short) band, (short) level);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setBassBoost(PluginCall call) {
+        int strength = call.getInt("strength", 0); // 0 - 1000
+        AudioEffectsManager.getInstance().setBassBoostStrength((short) strength);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setSurround(PluginCall call) {
+        int strength = call.getInt("strength", 0); // 0 - 1000
+        AudioEffectsManager.getInstance().setVirtualizerStrength((short) strength);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setReverb(PluginCall call) {
+        int preset = call.getInt("preset", 0);
+        AudioEffectsManager.getInstance().setReverbPreset((short) preset);
+        call.resolve();
+    }
+
     @PluginMethod
     public void canWriteSettings(PluginCall call) {
         boolean canWrite = true;

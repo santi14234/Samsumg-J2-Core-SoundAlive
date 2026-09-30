@@ -27,11 +27,11 @@ jobs:
       - name: Sincronizar proyecto Android con Capacitor
         run: npx cap sync android
 
-      - name: Configurar Java JDK 17
+      - name: Configurar Java JDK 21 (LTS)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Aceptar licencias de Android SDK
         run: yes | sdkmanager --licenses || true
