@@ -17,6 +17,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
       - name: Instalar dependencias
         run: npm install
@@ -30,16 +31,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Preparar proyecto Android con Capacitor
-        run: |
-          npx cap add android || true
-          npx cap sync android
-
       - name: Otorgar permisos de ejecución a Gradle
         run: chmod +x android/gradlew
+
+      - name: Sincronizar proyecto Android con Capacitor
+        run: npx cap sync android
 
       - name: Compilar APK con Gradle
         run: |
