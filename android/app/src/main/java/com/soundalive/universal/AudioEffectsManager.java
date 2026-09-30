@@ -271,6 +271,53 @@ public class AudioEffectsManager {
         setAmbiente(enabled ? 500 : 0);
     }
 
+    public synchronized void setConcertHall(boolean enabled) {
+        setAmbientSound(enabled);
+    }
+
+    public synchronized void setSamsungDials(int bassTreble, int vocalInstrument) {
+        this.isBasicMode = true;
+        this.dialBassTreble = Math.max(-100, Math.min(100, bassTreble));
+        this.dialVocalInstrument = Math.max(-100, Math.min(100, vocalInstrument));
+
+        double btNorm = this.dialBassTreble / 100.0;
+        double viNorm = this.dialVocalInstrument / 100.0;
+
+        short bassLevel = (short) Math.round(-btNorm * 800);
+        short trebleLevel = (short) Math.round(btNorm * 800);
+        short vocalLevel = (short) Math.round(viNorm * 800);
+        short instLevel = (short) Math.round(-viNorm * 600);
+
+        uiBandLevels.put((short) 0, (short) (bassLevel + instLevel));       // 63Hz
+        uiBandLevels.put((short) 1, (short) (bassLevel * 0.8 + instLevel * 0.5)); // 125Hz
+        uiBandLevels.put((short) 2, (short) (bassLevel * 0.4));             // 250Hz
+        uiBandLevels.put((short) 3, (short) (vocalLevel * 0.5));            // 500Hz
+        uiBandLevels.put((short) 4, (short) (vocalLevel));                  // 1kHz
+        uiBandLevels.put((short) 5, (short) (vocalLevel * 0.7));            // 2kHz
+        uiBandLevels.put((short) 6, (short) (trebleLevel * 0.4));           // 4kHz
+        uiBandLevels.put((short) 7, (short) (trebleLevel * 0.8 + instLevel * 0.5)); // 8kHz
+        uiBandLevels.put((short) 8, (short) (trebleLevel + instLevel));     // 16kHz
+
+        if (btNorm < 0) {
+            this.bassBoostStrength = (short) Math.round(-btNorm * 900);
+        } else {
+            this.bassBoostStrength = 0;
+        }
+        for (BassBoost bb : bassBoosts.values()) {
+            try {
+                bb.setEnabled(masterEnabled && bassBoostStrength > 0);
+                if (bb.getStrengthSupported()) {
+                    bb.setStrength(bassBoostStrength);
+                }
+            } catch (Exception ignored) {}
+        }
+
+        for (Equalizer eq : equalizers.values()) {
+            applyAllBandsToEqualizer(eq);
+        }
+        savePreferences();
+    }
+
     public synchronized void setSurround(int strength) {
         this.surroundStrength = Math.max(0, Math.min(1000, strength));
         for (Virtualizer v : virtualizers.values()) {
