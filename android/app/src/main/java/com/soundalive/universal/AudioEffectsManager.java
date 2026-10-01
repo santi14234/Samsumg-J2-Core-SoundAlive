@@ -417,6 +417,16 @@ public class AudioEffectsManager {
         JSObject obj = new JSObject();
         obj.put("masterEnabled", masterEnabled);
         obj.put("equalizerActive", masterEnabled && !equalizers.isEmpty());
+        obj.put("equalizerBands", 9);
+        obj.put("bassBoostSupported", true);
+        obj.put("bassBoostActive", masterEnabled && bassBoostStrength > 0);
+        obj.put("bassBoostStrength", (int) bassBoostStrength);
+        obj.put("concertHallEnabled", ambienteStrength > 0);
+        obj.put("concertHallActive", masterEnabled && ambienteStrength > 0);
+        obj.put("presetReverbSupported", true);
+        obj.put("envReverbSupported", true);
+        obj.put("roomAcousticSupported", true);
+        obj.put("concertHallEngine", "SoundAlive Reverb + FxSound Ambience");
         obj.put("gainMillibels", gainMillibels);
         obj.put("clarity", clarityStrength);
         obj.put("ambiente", ambienteStrength);
@@ -424,6 +434,21 @@ public class AudioEffectsManager {
         obj.put("dynamicBoost", dynamicBoostStrength);
         obj.put("bassBoost", bassBoostStrength);
         obj.put("sessionsCount", activeSessions.size());
+
+        JSArray sessionsArr = new JSArray();
+        for (Integer s : activeSessions) {
+            sessionsArr.put(s);
+        }
+        obj.put("activeSessions", sessionsArr);
+
+        JSArray enginesArr = new JSArray();
+        enginesArr.put("SoundAlive Equalizer (Samsung)");
+        enginesArr.put("SoundAlive Bass Boost (Samsung)");
+        enginesArr.put("FxSound LoudnessEnhancer (Preamp/Dynamic)");
+        enginesArr.put("EnvironmentalReverb (Sonido Ambiental)");
+        enginesArr.put("Virtualizer (Sonido Envolvente)");
+        obj.put("hardwareEngines", enginesArr);
+
         return obj;
     }
 
