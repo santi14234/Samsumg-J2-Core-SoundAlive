@@ -113,9 +113,11 @@ public class AudioEffectsManager {
                     applyAllBandsToEqualizer(eq);
                 } catch (Exception ignored) {}
             }
+            Log.d(TAG, "Session " + sessionId + " already attached.");
             return;
         }
         activeSessions.add(sessionId);
+        Log.d(TAG, "Attaching audio session ID: " + sessionId);
 
         // 1. Equalizer
         try {
@@ -123,6 +125,7 @@ public class AudioEffectsManager {
             eq.setEnabled(masterEnabled);
             applyAllBandsToEqualizer(eq);
             equalizers.put(sessionId, eq);
+            Log.d(TAG, "Equalizer OK on session " + sessionId);
         } catch (Exception e) {
             Log.w(TAG, "Equalizer init error: " + e.getMessage());
         }
@@ -133,6 +136,7 @@ public class AudioEffectsManager {
             bb.setEnabled(masterEnabled && bassBoostStrength > 0);
             if (bb.getStrengthSupported()) bb.setStrength(bassBoostStrength);
             bassBoosts.put(sessionId, bb);
+            Log.d(TAG, "BassBoost OK on session " + sessionId);
         } catch (Exception e) {
             Log.w(TAG, "BassBoost init error: " + e.getMessage());
         }
@@ -144,6 +148,7 @@ public class AudioEffectsManager {
             le.setTargetGain(totalGain);
             le.setEnabled(masterEnabled && totalGain != 0);
             loudnessEnhancers.put(sessionId, le);
+            Log.d(TAG, "LoudnessEnhancer OK on session " + sessionId);
         } catch (Exception e) {
             Log.w(TAG, "LoudnessEnhancer init error: " + e.getMessage());
         }
@@ -154,6 +159,7 @@ public class AudioEffectsManager {
             configureEnvironmentalReverb(env, ambienteStrength);
             env.setEnabled(masterEnabled && ambienteStrength > 0);
             envReverbs.put(sessionId, env);
+            Log.d(TAG, "EnvironmentalReverb OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
         } catch (Exception e) {
             Log.w(TAG, "EnvironmentalReverb init error: " + e.getMessage());
         }
@@ -164,6 +170,7 @@ public class AudioEffectsManager {
             rev.setPreset(ambienteStrength > 0 ? PresetReverb.PRESET_MEDIUMROOM : PresetReverb.PRESET_NONE);
             rev.setEnabled(masterEnabled && ambienteStrength > 0);
             presetReverbs.put(sessionId, rev);
+            Log.d(TAG, "PresetReverb OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
         } catch (Exception e) {
             Log.w(TAG, "PresetReverb init error: " + e.getMessage());
         }
@@ -176,6 +183,7 @@ public class AudioEffectsManager {
             }
             virt.setEnabled(masterEnabled && surroundStrength > 0);
             virtualizers.put(sessionId, virt);
+            Log.d(TAG, "Virtualizer OK on session " + sessionId);
         } catch (Exception e) {
             Log.w(TAG, "Virtualizer init error: " + e.getMessage());
         }
@@ -252,17 +260,22 @@ public class AudioEffectsManager {
     public synchronized void setAmbiente(int strength) {
         this.ambienteStrength = Math.max(0, Math.min(1000, strength));
         boolean active = ambienteStrength > 0;
+        Log.d(TAG, "setAmbiente strength: " + strength + ", active=" + active + ", envReverbs count: " + envReverbs.size() + ", presetReverbs count: " + presetReverbs.size());
         for (EnvironmentalReverb env : envReverbs.values()) {
             try {
                 configureEnvironmentalReverb(env, ambienteStrength);
                 env.setEnabled(masterEnabled && active);
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                Log.w(TAG, "EnvironmentalReverb set error: " + e.getMessage());
+            }
         }
         for (PresetReverb r : presetReverbs.values()) {
             try {
                 r.setPreset(active ? PresetReverb.PRESET_MEDIUMROOM : PresetReverb.PRESET_NONE);
                 r.setEnabled(masterEnabled && active);
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                Log.w(TAG, "PresetReverb set error: " + e.getMessage());
+            }
         }
         savePreferences();
     }
