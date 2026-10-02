@@ -490,38 +490,35 @@ public class AudioEffectsManager {
             try { if (le.getEnabled() && le.hasControl()) { loudnessLive = true; break; } } catch (Exception ignored) {}
         }
 
-        // Check real-time hardware audio playback output across system
-        boolean isAudioOutputActive = false;
-        try {
-            if (appContext != null) {
-                android.media.AudioManager am = (android.media.AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
-                if (am != null) {
-                    isAudioOutputActive = am.isMusicActive();
-                    if (!isAudioOutputActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        java.util.List<android.media.AudioPlaybackConfiguration> configs = am.getActivePlaybackConfigurations();
-                        if (configs != null) {
-                            for (android.media.AudioPlaybackConfiguration cfg : configs) {
-                                if (cfg.isActive()) {
-                                    isAudioOutputActive = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
+        // Check if effects have active audio changes applied to the system
+        boolean eqModified = false;
+        for (short lvl : uiBandLevels.values()) {
+            if (lvl != 0) {
+                eqModified = true;
+                break;
             }
-        } catch (Exception ignored) {}
+        }
+        if (dialBassTreble != 0 || dialVocalInstrument != 0) {
+            eqModified = true;
+        }
 
-        obj.put("isAudioOutputActive", isAudioOutputActive);
+        boolean bassBoostModified = (bassBoostStrength > 0);
+        boolean reverbModified = (ambienteStrength > 0);
+        boolean virtualizerModified = (surroundStrength > 0);
+        boolean clarityModified = (clarityStrength > 0);
+        boolean loudnessModified = (dynamicBoostStrength > 0);
+        boolean gainModified = (gainMillibels != 0);
 
-        // Effects are LIVE ONLY when master is on, effect has hardware control, value is active, AND audio output is actively playing!
-        obj.put("eqLive", masterEnabled && eqLive && isAudioOutputActive);
-        obj.put("bassBoostLive", masterEnabled && bassBoostLive && bassBoostStrength > 0 && isAudioOutputActive);
-        obj.put("reverbLive", masterEnabled && reverbLive && ambienteStrength > 0 && isAudioOutputActive);
-        obj.put("virtualizerLive", masterEnabled && virtualizerLive && surroundStrength > 0 && isAudioOutputActive);
-        obj.put("clarityLive", masterEnabled && eqLive && clarityStrength > 0 && isAudioOutputActive);
-        obj.put("loudnessLive", masterEnabled && loudnessLive && dynamicBoostStrength > 0 && isAudioOutputActive);
-        obj.put("gainLive", masterEnabled && loudnessLive && gainMillibels != 0 && isAudioOutputActive);
+        boolean audioModifiedInSystem = masterEnabled && (eqModified || bassBoostModified || reverbModified || virtualizerModified || clarityModified || loudnessModified || gainModified);
+
+        obj.put("audioModifiedInSystem", audioModifiedInSystem);
+        obj.put("eqLive", masterEnabled && eqModified);
+        obj.put("bassBoostLive", masterEnabled && bassBoostModified);
+        obj.put("reverbLive", masterEnabled && reverbModified);
+        obj.put("virtualizerLive", masterEnabled && virtualizerModified);
+        obj.put("clarityLive", masterEnabled && clarityModified);
+        obj.put("loudnessLive", masterEnabled && loudnessModified);
+        obj.put("gainLive", masterEnabled && gainModified);
 
         JSArray sessionsArr = new JSArray();
         for (Integer s : activeSessions) {

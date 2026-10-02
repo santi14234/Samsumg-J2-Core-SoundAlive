@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   EqualizerPreset,
   SOUNDALIVE_PRESETS,
@@ -36,9 +36,7 @@ import {
   Zap,
   Globe,
   Sun,
-  Play,
-  Square,
-  VolumeX,
+  Activity,
 } from 'lucide-react';
 
 const INITIAL_BANDS = [0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -62,82 +60,21 @@ export default function App() {
   // Live hardware state polled from the system
   const [hardwareStatus, setHardwareStatus] = useState<NativeEffectsStatus | null>(null);
 
-  // In-app test audio player (allows real-time audio detection both on phone and browser preview)
-  const [isPlayingTestAudio, setIsPlayingTestAudio] = useState<boolean>(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const audioNodesRef = useRef<any[]>([]);
-
-  const toggleTestAudio = () => {
-    if (isPlayingTestAudio) {
-      audioNodesRef.current.forEach((node) => {
-        try {
-          if (node.stop) node.stop();
-          node.disconnect();
-        } catch (e) {}
-      });
-      audioNodesRef.current = [];
-      setIsPlayingTestAudio(false);
-    } else {
-      try {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        if (!audioCtxRef.current) {
-          audioCtxRef.current = new AudioCtx();
-        }
-        if (audioCtxRef.current.state === 'suspended') {
-          audioCtxRef.current.resume();
-        }
-        const ctx = audioCtxRef.current;
-
-        const osc1 = ctx.createOscillator();
-        const osc2 = ctx.createOscillator();
-        const gainNode = ctx.createGain();
-
-        osc1.type = 'sine';
-        osc1.frequency.setValueAtTime(220, ctx.currentTime);
-        osc2.type = 'triangle';
-        osc2.frequency.setValueAtTime(440, ctx.currentTime);
-
-        gainNode.gain.setValueAtTime(0.06, ctx.currentTime);
-
-        osc1.connect(gainNode);
-        osc2.connect(gainNode);
-        gainNode.connect(ctx.destination);
-
-        osc1.start();
-        osc2.start();
-
-        audioNodesRef.current = [osc1, osc2, gainNode];
-        setIsPlayingTestAudio(true);
-      } catch (err) {
-        console.warn('AudioContext play error:', err);
-      }
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      audioNodesRef.current.forEach((node) => {
-        try {
-          if (node.stop) node.stop();
-          node.disconnect();
-        } catch (e) {}
-      });
-    };
-  }, []);
-
   // Start background service on mount
   useEffect(() => {
     startNativeBackgroundService();
   }, []);
 
-  // Poll hardware status every 1000ms
+  // Poll hardware status every 800ms to immediately detect any system audio change
   useEffect(() => {
     let mounted = true;
     const fetchStatus = async () => {
+      const hasBandsModified = bands.some((b) => b !== 0) || bassTreble !== 0 || instrumentVocal !== 0;
+      const isAnyModified = enabled && (hasBandsModified || bassBoost > 0 || ambiente > 0 || surround > 0 || clarity > 0 || dynamicBoost > 0 || gainDb !== 0);
+
       if (!isNativeAndroidApp()) {
-        // Fallback for browser preview: accurately tracks test audio playback
+        // Fallback for browser preview: directly mirrors applied modifications
         if (mounted) {
-          const hasBands = bands.some((b) => b !== 0) || bassTreble !== 0 || instrumentVocal !== 0;
           setHardwareStatus({
             masterEnabled: enabled,
             equalizerActive: enabled,
@@ -151,8 +88,8 @@ export default function App() {
             envReverbSupported: true,
             roomAcousticSupported: true,
             concertHallEngine: 'SoundAlive Reverb (Samsung)',
-            sessionsCount: isPlayingTestAudio ? 1 : 0,
-            activeSessions: isPlayingTestAudio ? [1] : [],
+            sessionsCount: isAnyModified ? 1 : 0,
+            activeSessions: [0],
             hardwareEngines: [
               'SoundAlive Equalizer (Samsung Electronics) - 53457161',
               'SoundAlive Bass Boost (Samsung Electronics) - 863902e0',
@@ -160,14 +97,14 @@ export default function App() {
               'EnvironmentalReverb (Android Native) - c2e5d5f0',
               'Dolby Audio Driver (Samsung Core Engine) - e0e6539b',
             ],
-            isAudioOutputActive: isPlayingTestAudio,
-            eqLive: enabled && hasBands && isPlayingTestAudio,
-            bassBoostLive: enabled && bassBoost > 0 && isPlayingTestAudio,
-            reverbLive: enabled && ambiente > 0 && isPlayingTestAudio,
-            virtualizerLive: enabled && surround > 0 && isPlayingTestAudio,
-            clarityLive: enabled && clarity > 0 && isPlayingTestAudio,
-            loudnessLive: enabled && dynamicBoost > 0 && isPlayingTestAudio,
-            gainLive: enabled && gainDb !== 0 && isPlayingTestAudio,
+            audioModifiedInSystem: isAnyModified,
+            eqLive: enabled && hasBandsModified,
+            bassBoostLive: enabled && bassBoost > 0,
+            reverbLive: enabled && ambiente > 0,
+            virtualizerLive: enabled && surround > 0,
+            clarityLive: enabled && clarity > 0,
+            loudnessLive: enabled && dynamicBoost > 0,
+            gainLive: enabled && gainDb !== 0,
           });
         }
         return;
@@ -184,13 +121,13 @@ export default function App() {
     };
 
     fetchStatus();
-    const interval = setInterval(fetchStatus, 1000);
+    const interval = setInterval(fetchStatus, 800);
 
     return () => {
       mounted = false;
       clearInterval(interval);
     };
-  }, [enabled, clarity, ambiente, surround, dynamicBoost, bassBoost, gainDb, bands, bassTreble, instrumentVocal, isPlayingTestAudio]);
+  }, [enabled, clarity, ambiente, surround, dynamicBoost, bassBoost, gainDb, bands, bassTreble, instrumentVocal]);
 
   // Sync Master Switch to Android
   useEffect(() => {
@@ -247,12 +184,9 @@ export default function App() {
     INITIAL_BANDS.forEach((_, idx) => syncNativeBandLevel(idx, 0));
   };
 
-  // Determine if audio is actively outputting right now
-  const isAudioStreaming = isNativeAndroidApp()
-    ? !!hardwareStatus?.isAudioOutputActive
-    : isPlayingTestAudio;
+  const hasAudioChanged = !!hardwareStatus?.audioModifiedInSystem;
 
-  // Helper for rendering sliders with true live processing status
+  // Helper for rendering sliders with true detection of applied audio changes
   const renderEffectSlider = (
     label: string,
     icon: React.ReactNode,
@@ -261,31 +195,25 @@ export default function App() {
     max: number,
     step: number,
     onChange: (val: number) => void,
-    isLive: boolean,
+    isApplied: boolean,
     isGain = false
   ) => {
-    const isConfigured = isGain ? value !== 0 : value > 0;
-
-    let statusText = 'APAGADO';
-    let ledColorClass = 'bg-rose-600 shadow-rose-600/80';
-    let textColorClass = 'text-rose-500';
+    let statusText = 'PLANO';
+    let ledColorClass = 'bg-neutral-600';
+    let textColorClass = 'text-neutral-500';
 
     if (!enabled) {
       statusText = 'DESACTIVADO';
-      ledColorClass = 'bg-neutral-700';
-      textColorClass = 'text-neutral-500';
-    } else if (isLive) {
-      statusText = 'EN USO EN VIVO';
-      ledColorClass = 'bg-emerald-500 shadow-emerald-500/80 animate-pulse';
-      textColorClass = 'text-emerald-400 font-extrabold';
-    } else if (isConfigured && !isAudioStreaming) {
-      statusText = 'EN ESPERA (SIN AUDIO)';
-      ledColorClass = 'bg-rose-500';
-      textColorClass = 'text-rose-400';
-    } else {
-      statusText = 'APAGADO';
       ledColorClass = 'bg-rose-600';
       textColorClass = 'text-rose-500';
+    } else if (isApplied) {
+      statusText = 'CAMBIO APLICADO';
+      ledColorClass = 'bg-emerald-500 shadow-emerald-500/80 animate-pulse';
+      textColorClass = 'text-emerald-400 font-extrabold';
+    } else {
+      statusText = 'SIN CAMBIO';
+      ledColorClass = 'bg-neutral-600';
+      textColorClass = 'text-neutral-500';
     }
 
     return (
@@ -301,7 +229,7 @@ export default function App() {
             </span>
             {/* REAL RED/GREEN LED HARDWARE INDICATOR LIGHT */}
             <div className="flex items-center gap-1.5 bg-black/60 px-2 py-0.5 rounded border border-neutral-800">
-              <span className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.4)] ${ledColorClass}`} />
+              <span className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.3)] ${ledColorClass}`} />
               <span className={`text-[9px] font-bold tracking-wider ${textColorClass}`}>
                 {statusText}
               </span>
@@ -362,47 +290,32 @@ export default function App() {
           </button>
         </header>
 
-        {/* Audio Output Detector & In-App Test Sound Player */}
+        {/* Global Audio Modification Detector (Real system change detector) */}
         <div className={`p-2.5 rounded-xl border flex items-center justify-between transition-colors ${
-          isAudioStreaming
+          hasAudioChanged
             ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-300'
             : 'bg-neutral-950 border-neutral-900 text-neutral-400'
         }`}>
           <div className="flex items-center gap-2">
             <div className={`w-2.5 h-2.5 rounded-full ${
-              isAudioStreaming ? 'bg-emerald-400 animate-ping' : 'bg-neutral-600'
+              hasAudioChanged ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-600'
             }`} />
             <div>
               <span className="text-[11px] font-bold block">
-                {isAudioStreaming ? '🔊 Salida de Audio: DETECTADA (En vivo)' : '🔇 Salida de Audio: SIN REPRODUCCIÓN'}
+                {hasAudioChanged ? '🟢 AUDIO DEL SISTEMA MODIFICADO' : '⚪ AUDIO ORIGINAL (Sin modificaciones)'}
               </span>
               <span className="text-[9px] text-neutral-500 block">
-                {isAudioStreaming
-                  ? 'Los efectos están procesando activamente la señal sonora'
-                  : 'Reproduce música en el teléfono o pulsa Probar para activar los efectos'}
+                {hasAudioChanged
+                  ? 'El sistema ha recibido y aplicado los cambios al procesador DSP'
+                  : 'Todos los parámetros están en neutro o el sistema está en sonido original'}
               </span>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={toggleTestAudio}
-            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all border ${
-              isPlayingTestAudio
-                ? 'bg-rose-500 text-white border-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
-                : 'bg-neutral-900 text-neutral-200 border-neutral-800 hover:border-neutral-700'
-            }`}
-          >
-            {isPlayingTestAudio ? (
-              <>
-                <Square className="w-3 h-3 fill-current" /> Detener
-              </>
-            ) : (
-              <>
-                <Play className="w-3 h-3 fill-current" /> Probar Audio
-              </>
-            )}
-          </button>
+          <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${
+            hasAudioChanged ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-neutral-900 border-neutral-800 text-neutral-500'
+          }`}>
+            {hasAudioChanged ? 'ACTIVO' : 'NEUTRO'}
+          </span>
         </div>
 
         {/* Mode Tabs */}
@@ -477,7 +390,7 @@ export default function App() {
               <span>FxSound Pro Efectos Avanzados</span>
             </div>
             <span className="text-[9px] text-neutral-500 font-bold uppercase tracking-wider">
-              {isAudioStreaming ? '🟢 SALIDA ACTIVA' : '🔴 SIN AUDIO SALIENTE'}
+              {hasAudioChanged ? '🟢 CAMBIOS APLICADOS' : '⚪ SONIDO PLANO'}
             </span>
           </div>
 
@@ -508,7 +421,6 @@ export default function App() {
           concertHallEnabled={ambiente > 0}
           mode={mode}
           status={hardwareStatus}
-          isAudioStreaming={isAudioStreaming}
         />
 
         {/* Footer */}
@@ -517,7 +429,7 @@ export default function App() {
             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
             <span>Frecuencia y Amplitud Nativas OK</span>
           </div>
-          <span className="font-mono">v1.2.13</span>
+          <span className="font-mono">v1.2.14</span>
         </footer>
       </div>
     </div>

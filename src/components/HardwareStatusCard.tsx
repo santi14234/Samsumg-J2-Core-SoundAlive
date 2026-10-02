@@ -109,15 +109,11 @@ export const HardwareStatusCard: React.FC<HardwareStatusCardProps> = ({
           </div>
           {status.eqLive ? (
             <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> EN USO
-            </span>
-          ) : !audioDetected ? (
-            <span className="text-[10px] text-neutral-400 bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-neutral-600" /> EN ESPERA
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> CAMBIO APLICADO
             </span>
           ) : (
-            <span className="text-[10px] text-rose-500 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> APAGADO
+            <span className="text-[10px] text-neutral-500 bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-neutral-600" /> PLANO
             </span>
           )}
         </div>
@@ -133,21 +129,17 @@ export const HardwareStatusCard: React.FC<HardwareStatusCardProps> = ({
               <span className="text-[10px] text-neutral-500 block">
                 {status.bassBoostStrength > 0
                   ? `Potencia: ${status.bassBoostStrength}`
-                  : 'Listo / En espera'}
+                  : 'Listo / Plano'}
               </span>
             </div>
           </div>
           {status.bassBoostLive ? (
             <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> EN USO
-            </span>
-          ) : !audioDetected ? (
-            <span className="text-[10px] text-neutral-400 bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-neutral-600" /> EN ESPERA
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> CAMBIO APLICADO
             </span>
           ) : (
-            <span className="text-[10px] text-rose-500 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> APAGADO
+            <span className="text-[10px] text-neutral-500 bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-neutral-600" /> PLANO
             </span>
           )}
         </div>
@@ -167,15 +159,11 @@ export const HardwareStatusCard: React.FC<HardwareStatusCardProps> = ({
           </div>
           {status.reverbLive ? (
             <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> EN USO
-            </span>
-          ) : !audioDetected ? (
-            <span className="text-[10px] text-neutral-400 bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-neutral-600" /> EN ESPERA
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> CAMBIO APLICADO
             </span>
           ) : (
-            <span className="text-[10px] text-rose-500 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> APAGADO
+            <span className="text-[10px] text-neutral-500 bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-neutral-600" /> PLANO
             </span>
           )}
         </div>

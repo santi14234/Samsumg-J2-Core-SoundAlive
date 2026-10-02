@@ -17,6 +17,7 @@ export interface NativeEffectsStatus {
   activeSessions: number[];
   hardwareEngines: string[];
   isAudioOutputActive?: boolean;
+  audioModifiedInSystem?: boolean;
   eqLive?: boolean;
   bassBoostLive?: boolean;
   reverbLive?: boolean;
