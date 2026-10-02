@@ -429,7 +429,7 @@ export default function App() {
             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
             <span>Frecuencia y Amplitud Nativas OK</span>
           </div>
-          <span className="font-mono">v1.2.14</span>
+          <span className="font-mono">v1.2.15</span>
         </footer>
       </div>
     </div>
