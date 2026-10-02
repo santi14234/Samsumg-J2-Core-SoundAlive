@@ -118,14 +118,8 @@ public class AudioEffectsManager {
             return;
         }
 
-        // Limit the active audio sessions to max 6 to prevent memory leaks and massive battery drain (e.g. WhatsApp spamming sessions)
         if (sessionId != 0) {
             sessionQueue.remove((Integer) sessionId);
-            while (sessionQueue.size() >= 6) {
-                int oldestSession = sessionQueue.remove(0);
-                Log.d(TAG, "Limit of 6 sessions reached. Releasing oldest session to save battery: " + oldestSession);
-                detachSession(oldestSession);
-            }
             sessionQueue.add(sessionId);
         }
 

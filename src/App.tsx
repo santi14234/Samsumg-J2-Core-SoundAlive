@@ -396,22 +396,22 @@ export default function App() {
 
           <div className="flex flex-col gap-2.5">
             {/* Ganancia */}
-            {renderEffectSlider('Ganancia / Preamp', <Volume2 className="w-3.5 h-3.5 text-sky-400" />, gainDb, -5, 12, 0.5, setGainDb, !!hardwareStatus?.gainLive, true)}
+            {renderEffectSlider('Ganancia / Preamp', <Volume2 className="w-3.5 h-3.5 text-sky-400" />, gainDb, -5, 12, 0.5, setGainDb, enabled && (gainDb !== 0 || !!hardwareStatus?.gainLive), true)}
 
             {/* Claridad */}
-            {renderEffectSlider('Claridad (Agudos definidos)', <Sun className="w-3.5 h-3.5 text-amber-400" />, clarity, 0, 1000, 10, setClarity, !!hardwareStatus?.clarityLive)}
+            {renderEffectSlider('Claridad (Agudos definidos)', <Sun className="w-3.5 h-3.5 text-amber-400" />, clarity, 0, 1000, 10, setClarity, enabled && (clarity > 0 || !!hardwareStatus?.clarityLive))}
 
             {/* Ambiente */}
-            {renderEffectSlider('Ambiente (Sala de Conciertos)', <Globe className="w-3.5 h-3.5 text-emerald-400" />, ambiente, 0, 1000, 10, setAmbiente, !!hardwareStatus?.reverbLive)}
+            {renderEffectSlider('Ambiente (Sala de Conciertos)', <Globe className="w-3.5 h-3.5 text-emerald-400" />, ambiente, 0, 1000, 10, setAmbiente, enabled && (ambiente > 0 || !!hardwareStatus?.reverbLive))}
 
             {/* Sonido envolvente */}
-            {renderEffectSlider('Sonido envolvente (Virtualizer)', <Sparkles className="w-3.5 h-3.5 text-purple-400" />, surround, 0, 1000, 10, setSurround, !!hardwareStatus?.virtualizerLive)}
+            {renderEffectSlider('Sonido envolvente (Virtualizer)', <Sparkles className="w-3.5 h-3.5 text-purple-400" />, surround, 0, 1000, 10, setSurround, enabled && (surround > 0 || !!hardwareStatus?.virtualizerLive))}
 
             {/* Refuerzo dinámico */}
-            {renderEffectSlider('Refuerzo dinámico (Compresor)', <Zap className="w-3.5 h-3.5 text-orange-400" />, dynamicBoost, 0, 1000, 10, setDynamicBoost, !!hardwareStatus?.loudnessLive)}
+            {renderEffectSlider('Refuerzo dinámico (Compresor)', <Zap className="w-3.5 h-3.5 text-orange-400" />, dynamicBoost, 0, 1000, 10, setDynamicBoost, enabled && (dynamicBoost > 0 || !!hardwareStatus?.loudnessLive))}
 
             {/* Refuerzo de graves */}
-            {renderEffectSlider('Refuerzo de graves (Bass)', <Sliders className="w-3.5 h-3.5 text-rose-400" />, bassBoost, 0, 1000, 10, setBassBoost, !!hardwareStatus?.bassBoostLive)}
+            {renderEffectSlider('Refuerzo de graves (Bass)', <Sliders className="w-3.5 h-3.5 text-rose-400" />, bassBoost, 0, 1000, 10, setBassBoost, enabled && (bassBoost > 0 || !!hardwareStatus?.bassBoostLive))}
           </div>
         </section>
 
@@ -429,7 +429,7 @@ export default function App() {
             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
             <span>Frecuencia y Amplitud Nativas OK</span>
           </div>
-          <span className="font-mono">v1.2.15</span>
+          <span className="font-mono">v1.2.17</span>
         </footer>
       </div>
     </div>
