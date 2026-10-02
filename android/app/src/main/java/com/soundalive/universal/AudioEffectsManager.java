@@ -490,13 +490,38 @@ public class AudioEffectsManager {
             try { if (le.getEnabled() && le.hasControl()) { loudnessLive = true; break; } } catch (Exception ignored) {}
         }
 
-        obj.put("eqLive", masterEnabled && eqLive);
-        obj.put("bassBoostLive", masterEnabled && bassBoostLive && bassBoostStrength > 0);
-        obj.put("reverbLive", masterEnabled && reverbLive && ambienteStrength > 0);
-        obj.put("virtualizerLive", masterEnabled && virtualizerLive && surroundStrength > 0);
-        obj.put("clarityLive", masterEnabled && eqLive && clarityStrength > 0);
-        obj.put("loudnessLive", masterEnabled && loudnessLive && dynamicBoostStrength > 0);
-        obj.put("gainLive", masterEnabled && loudnessLive && gainMillibels != 0);
+        // Check real-time hardware audio playback output across system
+        boolean isAudioOutputActive = false;
+        try {
+            if (appContext != null) {
+                android.media.AudioManager am = (android.media.AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
+                if (am != null) {
+                    isAudioOutputActive = am.isMusicActive();
+                    if (!isAudioOutputActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        java.util.List<android.media.AudioPlaybackConfiguration> configs = am.getActivePlaybackConfigurations();
+                        if (configs != null) {
+                            for (android.media.AudioPlaybackConfiguration cfg : configs) {
+                                if (cfg.isActive()) {
+                                    isAudioOutputActive = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        obj.put("isAudioOutputActive", isAudioOutputActive);
+
+        // Effects are LIVE ONLY when master is on, effect has hardware control, value is active, AND audio output is actively playing!
+        obj.put("eqLive", masterEnabled && eqLive && isAudioOutputActive);
+        obj.put("bassBoostLive", masterEnabled && bassBoostLive && bassBoostStrength > 0 && isAudioOutputActive);
+        obj.put("reverbLive", masterEnabled && reverbLive && ambienteStrength > 0 && isAudioOutputActive);
+        obj.put("virtualizerLive", masterEnabled && virtualizerLive && surroundStrength > 0 && isAudioOutputActive);
+        obj.put("clarityLive", masterEnabled && eqLive && clarityStrength > 0 && isAudioOutputActive);
+        obj.put("loudnessLive", masterEnabled && loudnessLive && dynamicBoostStrength > 0 && isAudioOutputActive);
+        obj.put("gainLive", masterEnabled && loudnessLive && gainMillibels != 0 && isAudioOutputActive);
 
         JSArray sessionsArr = new JSArray();
         for (Integer s : activeSessions) {

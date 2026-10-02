@@ -18,11 +18,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Configurar Java JDK 21 (LTS)
+      - name: Configurar Java JDK 17 (LTS)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '17'
 
       - name: Instalar dependencias
         run: npm install --legacy-peer-deps
