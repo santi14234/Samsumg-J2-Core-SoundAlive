@@ -23,8 +23,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
-
-     - name: Configurar Android SDK
+          
   uses: android-actions/setup-android@v3
   with:
     api-level: 34
