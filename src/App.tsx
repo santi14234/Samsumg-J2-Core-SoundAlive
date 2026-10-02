@@ -37,6 +37,10 @@ import {
   Globe,
   Sun,
   Activity,
+  Bookmark,
+  Trash2,
+  Save,
+  X,
 } from 'lucide-react';
 
 const INITIAL_BANDS = [0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -56,6 +60,88 @@ export default function App() {
   const [dynamicBoost, setDynamicBoost] = useState<number>(0);
   const [bassBoost, setBassBoost] = useState<number>(0);
   const [gainDb, setGainDb] = useState<number>(0);
+
+  interface UserProfileSlot {
+    id: number;
+    name: string;
+    bands: number[];
+    bassTreble: number;
+    instrumentVocal: number;
+    gainDb: number;
+    clarity: number;
+    ambiente: number;
+    surround: number;
+    dynamicBoost: number;
+    bassBoost: number;
+    updatedAt: string;
+  }
+
+  const [userProfiles, setUserProfiles] = useState<Record<number, UserProfileSlot>>(() => {
+    try {
+      const saved = localStorage.getItem('soundalive_user_profiles_10slots');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {};
+  });
+
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileInputName, setProfileInputName] = useState('');
+
+  const saveToSlot = (slotId: number) => {
+    const name = profileInputName.trim() || `Perfil ${slotId}`;
+    const profile: UserProfileSlot = {
+      id: slotId,
+      name,
+      bands: [...bands],
+      bassTreble,
+      instrumentVocal,
+      gainDb,
+      clarity,
+      ambiente,
+      surround,
+      dynamicBoost,
+      bassBoost,
+      updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    const updated = { ...userProfiles, [slotId]: profile };
+    setUserProfiles(updated);
+    setProfileInputName('');
+    try {
+      localStorage.setItem('soundalive_user_profiles_10slots', JSON.stringify(updated));
+    } catch (e) {}
+  };
+
+  const loadFromSlot = (profile: UserProfileSlot) => {
+    setBands([...profile.bands]);
+    setBassTreble(profile.bassTreble);
+    setInstrumentVocal(profile.instrumentVocal);
+    setGainDb(profile.gainDb);
+    setClarity(profile.clarity);
+    setAmbiente(profile.ambiente);
+    setSurround(profile.surround);
+    setDynamicBoost(profile.dynamicBoost);
+    setBassBoost(profile.bassBoost);
+    setSelectedPresetId(`slot_${profile.id}`);
+
+    syncNativeGain(profile.gainDb);
+    syncNativeClarity(profile.clarity);
+    syncNativeAmbiente(profile.ambiente);
+    syncNativeSurround(profile.surround);
+    syncNativeDynamicBoost(profile.dynamicBoost);
+    syncNativeBassBoost(profile.bassBoost);
+    syncNativeSamsungDials(profile.bassTreble, profile.instrumentVocal);
+    profile.bands.forEach((g, idx) => syncNativeBandLevel(idx, g));
+    setShowProfileModal(false);
+  };
+
+  const deleteSlot = (slotId: number) => {
+    const updated = { ...userProfiles };
+    delete updated[slotId];
+    setUserProfiles(updated);
+    try {
+      localStorage.setItem('soundalive_user_profiles_10slots', JSON.stringify(updated));
+    } catch (e) {}
+  };
 
   // Live hardware state polled from the system
   const [hardwareStatus, setHardwareStatus] = useState<NativeEffectsStatus | null>(null);
@@ -342,8 +428,16 @@ export default function App() {
           </button>
         </div>
 
-        {/* Presets Strip */}
-        <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar">
+        {/* Presets Strip & 10-Slot Profiles Button */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setShowProfileModal(true)}
+            className="px-2.5 py-1 rounded-lg text-[10px] font-extrabold whitespace-nowrap bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 flex items-center gap-1 hover:bg-emerald-900/50 transition-colors shadow-[0_0_10px_rgba(16,185,129,0.2)]"
+          >
+            <Bookmark className="w-3 h-3 text-emerald-400" />
+            <span>Ranuras (10 Perfiles)</span>
+          </button>
           {SOUNDALIVE_PRESETS.map((p) => {
             const isSelected = selectedPresetId === p.id;
             return (
@@ -361,6 +455,99 @@ export default function App() {
             );
           })}
         </div>
+
+        {/* 10-Slot Profiles Modal (FxSound Style) */}
+        {showProfileModal && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-md p-4 flex flex-col gap-3 shadow-2xl animate-in fade-in zoom-in duration-200">
+              <div className="flex items-center justify-between border-b border-neutral-900 pb-2">
+                <div className="flex items-center gap-2">
+                  <Bookmark className="w-4 h-4 text-emerald-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-white">Ranuras de Perfiles Personalizados (10)</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowProfileModal(false)}
+                  className="w-7 h-7 rounded-lg bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 bg-neutral-900/50 p-2 rounded-xl border border-neutral-800/80">
+                <input
+                  type="text"
+                  placeholder="Nombre para guardar el perfil actual..."
+                  value={profileInputName}
+                  onChange={(e) => setProfileInputName(e.target.value)}
+                  className="flex-1 bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                />
+                <span className="text-[10px] text-neutral-500 font-mono">10 Slots</span>
+              </div>
+
+              <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1 no-scrollbar">
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((slotId) => {
+                  const savedProfile = userProfiles[slotId];
+                  return (
+                    <div
+                      key={slotId}
+                      className={`p-2.5 rounded-xl border flex items-center justify-between transition-all ${
+                        savedProfile
+                          ? 'bg-neutral-900/60 border-emerald-500/30 hover:border-emerald-500/60'
+                          : 'bg-black/40 border-neutral-900 hover:border-neutral-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-mono font-bold ${
+                          savedProfile ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-neutral-900 text-neutral-500 border border-neutral-800'
+                        }`}>
+                          {slotId}
+                        </div>
+                        <div>
+                          <span className="text-xs font-bold text-white block">
+                            {savedProfile ? savedProfile.name : `Ranura ${slotId} (Vacía)`}
+                          </span>
+                          <span className="text-[9px] text-neutral-500 block">
+                            {savedProfile ? `Guardado: ${savedProfile.updatedAt}` : 'Listo para guardar tu ecualización actual'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {savedProfile && (
+                          <button
+                            type="button"
+                            onClick={() => loadFromSlot(savedProfile)}
+                            className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-sky-500/20 border border-sky-500/40 text-sky-300 hover:bg-sky-500/30 transition-colors"
+                          >
+                            Cargar
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => saveToSlot(slotId)}
+                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 transition-colors flex items-center gap-1"
+                        >
+                          <Save className="w-3 h-3" />
+                          <span>{savedProfile ? 'Sobrescribir' : 'Guardar'}</span>
+                        </button>
+                        {savedProfile && (
+                          <button
+                            type="button"
+                            onClick={() => deleteSlot(slotId)}
+                            className="p-1 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20 transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main Panel */}
         <main className="w-full">
@@ -429,7 +616,7 @@ export default function App() {
             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
             <span>Frecuencia y Amplitud Nativas OK</span>
           </div>
-          <span className="font-mono">v1.2.17</span>
+          <span className="font-mono">v1.2.20</span>
         </footer>
       </div>
     </div>
