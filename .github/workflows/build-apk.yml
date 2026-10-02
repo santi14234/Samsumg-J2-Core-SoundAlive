@@ -23,11 +23,12 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
-          
-  uses: android-actions/setup-android@v3
-  with:
-    api-level: 34
-    build-tools-version: 34.0.0
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          build-tools-version: 34.0.0
 
       - name: Instalar dependencias
         run: npm install --legacy-peer-deps
