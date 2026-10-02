@@ -33,6 +33,7 @@ public class AudioEffectsManager {
     public static final int[] UI_FREQUENCIES_HZ = {63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000};
 
     private final Set<Integer> activeSessions = new HashSet<>();
+    private final java.util.List<Integer> sessionQueue = new java.util.ArrayList<>();
     private final Map<Integer, Equalizer> equalizers = new HashMap<>();
     private final Map<Integer, BassBoost> bassBoosts = new HashMap<>();
     private final Map<Integer, LoudnessEnhancer> loudnessEnhancers = new HashMap<>();
@@ -116,6 +117,18 @@ public class AudioEffectsManager {
             Log.d(TAG, "Session " + sessionId + " already attached.");
             return;
         }
+
+        // Limit the active audio sessions to max 6 to prevent memory leaks and massive battery drain (e.g. WhatsApp spamming sessions)
+        if (sessionId != 0) {
+            sessionQueue.remove((Integer) sessionId);
+            while (sessionQueue.size() >= 6) {
+                int oldestSession = sessionQueue.remove(0);
+                Log.d(TAG, "Limit of 6 sessions reached. Releasing oldest session to save battery: " + oldestSession);
+                detachSession(oldestSession);
+            }
+            sessionQueue.add(sessionId);
+        }
+
         activeSessions.add(sessionId);
         Log.d(TAG, "Attaching audio session ID: " + sessionId);
 
@@ -164,13 +177,13 @@ public class AudioEffectsManager {
             Log.w(TAG, "EnvironmentalReverb init error: " + e.getMessage());
         }
 
-        // 5. PresetReverb
+        // 5. PresetReverb (Using PRESET_CONCERTHALL for real Samsung SoundAlive Concert Hall feeling)
         try {
             PresetReverb rev = new PresetReverb(EFFECT_PRIORITY, sessionId);
-            rev.setPreset(ambienteStrength > 0 ? PresetReverb.PRESET_MEDIUMROOM : PresetReverb.PRESET_NONE);
+            rev.setPreset(ambienteStrength > 0 ? PresetReverb.PRESET_CONCERTHALL : PresetReverb.PRESET_NONE);
             rev.setEnabled(masterEnabled && ambienteStrength > 0);
             presetReverbs.put(sessionId, rev);
-            Log.d(TAG, "PresetReverb OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
+            Log.d(TAG, "PresetReverb (CONCERTHALL) OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
         } catch (Exception e) {
             Log.w(TAG, "PresetReverb init error: " + e.getMessage());
         }
@@ -271,7 +284,7 @@ public class AudioEffectsManager {
         }
         for (PresetReverb r : presetReverbs.values()) {
             try {
-                r.setPreset(active ? PresetReverb.PRESET_MEDIUMROOM : PresetReverb.PRESET_NONE);
+                r.setPreset(active ? PresetReverb.PRESET_CONCERTHALL : PresetReverb.PRESET_NONE);
                 r.setEnabled(masterEnabled && active);
             } catch (Exception e) {
                 Log.w(TAG, "PresetReverb set error: " + e.getMessage());
