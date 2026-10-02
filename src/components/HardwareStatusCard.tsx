@@ -117,13 +117,13 @@ export const HardwareStatusCard: React.FC<HardwareStatusCardProps> = ({
               </span>
             </div>
           </div>
-          {status.equalizerActive ? (
+          {status.eqLive ? (
             <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" /> Funcionando
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> VERIFICADO
             </span>
           ) : (
-            <span className="text-[10px] text-neutral-500 bg-neutral-900 px-2 py-0.5 rounded-md font-medium">
-              Desactivado
+            <span className="text-[10px] text-rose-500 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> INACTIVO
             </span>
           )}
         </div>
@@ -138,22 +138,18 @@ export const HardwareStatusCard: React.FC<HardwareStatusCardProps> = ({
               </span>
               <span className="text-[10px] text-neutral-500 block">
                 {status.bassBoostStrength > 0
-                  ? `+${Math.round(status.bassBoostStrength / 10)}% potencia`
+                  ? `Potencia: ${status.bassBoostStrength}`
                   : 'Listo / En espera'}
               </span>
             </div>
           </div>
-          {status.bassBoostActive ? (
+          {status.bassBoostLive ? (
             <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" /> Funcionando
-            </span>
-          ) : status.bassBoostSupported ? (
-            <span className="text-[10px] text-sky-400 bg-sky-500/10 border border-sky-500/20 px-2 py-0.5 rounded-md font-medium">
-              Disponible
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> VERIFICADO
             </span>
           ) : (
-            <span className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-md font-medium">
-              No soportado
+            <span className="text-[10px] text-rose-500 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> INACTIVO
             </span>
           )}
         </div>
@@ -167,17 +163,17 @@ export const HardwareStatusCard: React.FC<HardwareStatusCardProps> = ({
                 Sonido Ambiental
               </span>
               <span className="text-[10px] text-neutral-500 block truncate max-w-[110px]">
-                {status.concertHallActive ? 'Reverb FxSound' : 'Apagado'}
+                {status.reverbLive ? 'Sala Conciertos' : 'Apagado'}
               </span>
             </div>
           </div>
-          {status.concertHallActive ? (
+          {status.reverbLive ? (
             <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" /> Funcionando
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> VERIFICADO
             </span>
           ) : (
-            <span className="text-[10px] text-neutral-500 bg-neutral-900 px-2 py-0.5 rounded-md font-medium">
-              Desactivado
+            <span className="text-[10px] text-rose-500 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> INACTIVO
             </span>
           )}
         </div>

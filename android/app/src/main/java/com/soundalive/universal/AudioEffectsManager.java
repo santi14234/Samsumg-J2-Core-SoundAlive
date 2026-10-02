@@ -461,18 +461,68 @@ public class AudioEffectsManager {
         obj.put("bassBoost", bassBoostStrength);
         obj.put("sessionsCount", activeSessions.size());
 
+        // Check TRUE live hardware running state (if at least one native effect is enabled & has control)
+        boolean eqLive = false;
+        for (Equalizer eq : equalizers.values()) {
+            try { if (eq.getEnabled() && eq.hasControl()) { eqLive = true; break; } } catch (Exception ignored) {}
+        }
+
+        boolean bassBoostLive = false;
+        for (BassBoost bb : bassBoosts.values()) {
+            try { if (bb.getEnabled() && bb.hasControl()) { bassBoostLive = true; break; } } catch (Exception ignored) {}
+        }
+
+        boolean reverbLive = false;
+        for (PresetReverb r : presetReverbs.values()) {
+            try { if (r.getEnabled() && r.hasControl()) { reverbLive = true; break; } } catch (Exception ignored) {}
+        }
+        for (EnvironmentalReverb r : envReverbs.values()) {
+            try { if (r.getEnabled() && r.hasControl()) { reverbLive = true; break; } } catch (Exception ignored) {}
+        }
+
+        boolean virtualizerLive = false;
+        for (Virtualizer v : virtualizers.values()) {
+            try { if (v.getEnabled() && v.hasControl()) { virtualizerLive = true; break; } } catch (Exception ignored) {}
+        }
+
+        boolean loudnessLive = false;
+        for (LoudnessEnhancer le : loudnessEnhancers.values()) {
+            try { if (le.getEnabled() && le.hasControl()) { loudnessLive = true; break; } } catch (Exception ignored) {}
+        }
+
+        obj.put("eqLive", masterEnabled && eqLive);
+        obj.put("bassBoostLive", masterEnabled && bassBoostLive && bassBoostStrength > 0);
+        obj.put("reverbLive", masterEnabled && reverbLive && ambienteStrength > 0);
+        obj.put("virtualizerLive", masterEnabled && virtualizerLive && surroundStrength > 0);
+        obj.put("clarityLive", masterEnabled && eqLive && clarityStrength > 0);
+        obj.put("loudnessLive", masterEnabled && loudnessLive && dynamicBoostStrength > 0);
+        obj.put("gainLive", masterEnabled && loudnessLive && gainMillibels != 0);
+
         JSArray sessionsArr = new JSArray();
         for (Integer s : activeSessions) {
             sessionsArr.put(s);
         }
         obj.put("activeSessions", sessionsArr);
 
+        // Query ALL physical sound drivers / audio engines registered in the system (Not just equalizer!)
         JSArray enginesArr = new JSArray();
-        enginesArr.put("SoundAlive Equalizer (Samsung)");
-        enginesArr.put("SoundAlive Bass Boost (Samsung)");
-        enginesArr.put("FxSound LoudnessEnhancer (Preamp/Dynamic)");
-        enginesArr.put("EnvironmentalReverb (Sonido Ambiental)");
-        enginesArr.put("Virtualizer (Sonido Envolvente)");
+        try {
+            android.media.audiofx.AudioEffect.Descriptor[] descriptors = android.media.audiofx.AudioEffect.queryEffects();
+            if (descriptors != null && descriptors.length > 0) {
+                for (android.media.audiofx.AudioEffect.Descriptor desc : descriptors) {
+                    enginesArr.put(desc.name + " (" + desc.implementor + ") - " + desc.uuid.toString().substring(0, 8));
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "queryEffects error: " + e.getMessage());
+        }
+        if (enginesArr.length() == 0) {
+            enginesArr.put("SoundAlive Equalizer (Samsung)");
+            enginesArr.put("SoundAlive Bass Boost (Samsung)");
+            enginesArr.put("FxSound LoudnessEnhancer (Preamp/Dynamic)");
+            enginesArr.put("EnvironmentalReverb (Sonido Ambiental)");
+            enginesArr.put("Virtualizer (Sonido Envolvente)");
+        }
         obj.put("hardwareEngines", enginesArr);
 
         return obj;

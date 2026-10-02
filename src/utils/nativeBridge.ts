@@ -16,6 +16,13 @@ export interface NativeEffectsStatus {
   sessionsCount: number;
   activeSessions: number[];
   hardwareEngines: string[];
+  eqLive?: boolean;
+  bassBoostLive?: boolean;
+  reverbLive?: boolean;
+  virtualizerLive?: boolean;
+  clarityLive?: boolean;
+  loudnessLive?: boolean;
+  gainLive?: boolean;
 }
 
 interface SoundAliveSystemPlugin {

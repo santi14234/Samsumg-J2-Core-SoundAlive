@@ -22,6 +22,9 @@ import {
   syncNativeDynamicBoost,
   syncNativeBassBoost,
   startNativeBackgroundService,
+  getNativeEffectsStatus,
+  NativeEffectsStatus,
+  isNativeAndroidApp,
 } from './utils/nativeBridge';
 import {
   Sliders,
@@ -53,10 +56,73 @@ export default function App() {
   const [bassBoost, setBassBoost] = useState<number>(0);
   const [gainDb, setGainDb] = useState<number>(0);
 
-  // Auto start Android foreground audio service on mount
+  // Live hardware state polled from the system
+  const [hardwareStatus, setHardwareStatus] = useState<NativeEffectsStatus | null>(null);
+
+  // Start background service on mount
   useEffect(() => {
     startNativeBackgroundService();
   }, []);
+
+  // Poll hardware status every 1000ms for ultra-responsive live detection
+  useEffect(() => {
+    let mounted = true;
+    const fetchStatus = async () => {
+      if (!isNativeAndroidApp()) {
+        // Mock fallback for browser preview
+        if (mounted) {
+          setHardwareStatus({
+            masterEnabled: enabled,
+            equalizerActive: enabled,
+            equalizerBands: 9,
+            bassBoostSupported: true,
+            bassBoostActive: enabled && bassBoost > 0,
+            bassBoostStrength: bassBoost,
+            concertHallEnabled: ambiente > 0,
+            concertHallActive: enabled && ambiente > 0,
+            presetReverbSupported: true,
+            envReverbSupported: true,
+            roomAcousticSupported: true,
+            concertHallEngine: 'SoundAlive Reverb',
+            sessionsCount: 1,
+            activeSessions: [0],
+            hardwareEngines: [
+              'SoundAlive Equalizer (Samsung)',
+              'SoundAlive Bass Boost (Samsung)',
+              'PresetReverb (Samsung SoundAlive)',
+              'EnvironmentalReverb (Android Engine)',
+              'Dolby Audio Driver (Samsung Core)',
+            ],
+            eqLive: enabled,
+            bassBoostLive: enabled && bassBoost > 200,
+            reverbLive: enabled && ambiente > 200,
+            virtualizerLive: enabled && surround > 200,
+            clarityLive: enabled && clarity > 200,
+            loudnessLive: enabled && dynamicBoost > 200,
+            gainLive: enabled && gainDb !== 0,
+          });
+        }
+        return;
+      }
+
+      try {
+        const res = await getNativeEffectsStatus();
+        if (mounted && res) {
+          setHardwareStatus(res);
+        }
+      } catch (err) {
+        console.warn('Error polling status:', err);
+      }
+    };
+
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 1000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [enabled, clarity, ambiente, surround, dynamicBoost, bassBoost, gainDb]);
 
   // Sync Master Switch to Android
   useEffect(() => {
@@ -68,7 +134,7 @@ export default function App() {
     if (mode === 'basic') {
       syncNativeSamsungDials(bassTreble, instrumentVocal);
     }
-  }, [bassTreble, instrumentVocal]);
+  }, [bassTreble, instrumentVocal, mode]);
 
   useEffect(() => {
     if (mode === 'advanced') {
@@ -113,7 +179,7 @@ export default function App() {
     INITIAL_BANDS.forEach((_, idx) => syncNativeBandLevel(idx, 0));
   };
 
-  // Helper for rendering sliders with green decibel status bars
+  // Helper for rendering sliders with true red/green indicator lights (No dB labels, just raw values/statuses)
   const renderEffectSlider = (
     label: string,
     icon: React.ReactNode,
@@ -122,13 +188,9 @@ export default function App() {
     max: number,
     step: number,
     onChange: (val: number) => void,
-    isDbAlready = false
+    isLive: boolean,
+    isGain = false
   ) => {
-    const isEffectActive = enabled && (isDbAlready ? value !== 0 : value > 0);
-    // Map slider values to simulated decibel boost for green level bar
-    const dbValue = isDbAlready ? value : (value / 1000) * 12.0;
-    const dbFormatted = isEffectActive ? `${dbValue > 0 ? '+' : ''}${dbValue.toFixed(1)} dB` : '0.0 dB';
-
     return (
       <div className="bg-neutral-900/50 border border-neutral-900 rounded-xl p-3 flex flex-col gap-2 hover:border-neutral-800 transition-colors">
         <div className="flex items-center justify-between">
@@ -136,9 +198,18 @@ export default function App() {
             {icon}
             {label}
           </span>
-          <span className="text-xs font-mono font-bold text-sky-400">
-            {isDbAlready ? `${value > 0 ? '+' : ''}${value} dB` : value}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono font-bold text-sky-400">
+              {isGain ? `${value > 0 ? '+' : ''}${value}` : value}
+            </span>
+            {/* TRUE RED/GREEN LED HARDWARE INDICATOR LIGHT */}
+            <div className="flex items-center gap-1 bg-black/60 px-2 py-0.5 rounded border border-neutral-800">
+              <span className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.4)] ${isLive ? 'bg-emerald-500 shadow-emerald-500/80 animate-pulse' : 'bg-rose-600 shadow-rose-600/80'}`} />
+              <span className={`text-[9px] font-extrabold tracking-wider ${isLive ? 'text-emerald-400' : 'text-rose-500'}`}>
+                {isLive ? 'VERIFICADO' : 'INACTIVO'}
+              </span>
+            </div>
+          </div>
         </div>
 
         <input
@@ -147,32 +218,13 @@ export default function App() {
           max={max}
           step={step}
           value={value}
-          onChange={(e) => onChange(isDbAlready ? parseFloat(e.target.value) : parseInt(e.target.value))}
+          onChange={(e) => {
+            const val = isGain ? parseFloat(e.target.value) : parseInt(e.target.value);
+            onChange(val);
+          }}
           disabled={!enabled}
           className="w-full accent-sky-500 bg-neutral-950 h-1.5 rounded-lg appearance-none cursor-pointer disabled:opacity-40"
         />
-
-        {/* GREEN LEVEL DECIBS BAR INDICATOR */}
-        <div className="flex items-center gap-2 mt-1">
-          <span className={`w-1.5 h-1.5 rounded-full ${isEffectActive ? 'bg-emerald-400 animate-ping' : 'bg-neutral-800'}`} />
-          <div className="flex-1 h-1.5 bg-neutral-950 rounded-full overflow-hidden border border-neutral-900/60 relative">
-            {isEffectActive ? (
-              <div
-                className="h-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-400 rounded-full transition-all duration-300 relative overflow-hidden"
-                style={{
-                  width: `${isDbAlready ? ((value + 5) / 17) * 100 : (value / 1000) * 100}%`,
-                }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
-              </div>
-            ) : (
-              <div className="h-full w-0 bg-neutral-800" />
-            )}
-          </div>
-          <span className={`text-[9px] font-mono font-bold w-14 text-right transition-colors ${isEffectActive ? 'text-emerald-400' : 'text-neutral-600'}`}>
-            {isEffectActive ? dbFormatted : 'INACTIVO'}
-          </span>
-        </div>
       </div>
     );
   };
@@ -277,35 +329,38 @@ export default function App() {
           )}
         </main>
 
-        {/* FxSound Pro Cleaned, Uncluttered Panel with Green Activity Bars */}
+        {/* FxSound Pro Cleaned, Uncluttered Panel with Real Hardware Lights */}
         <section className="bg-neutral-950 border border-neutral-900 rounded-2xl p-3 flex flex-col gap-3">
-          <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-extrabold uppercase tracking-wider border-b border-neutral-900 pb-1.5">
-            <Sparkles className="w-3 h-3 text-emerald-400 animate-pulse" />
-            <span>FxSound Pro Efectos Avanzados</span>
+          <div className="flex items-center justify-between border-b border-neutral-900 pb-1.5">
+            <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-extrabold uppercase tracking-wider">
+              <Sparkles className="w-3 h-3 text-emerald-400 animate-pulse" />
+              <span>FxSound Pro Efectos Avanzados</span>
+            </div>
+            <span className="text-[9px] text-neutral-500 font-bold uppercase tracking-wider">VERIFICACIÓN EN HARDWARE EN VIVO</span>
           </div>
 
           <div className="flex flex-col gap-2.5">
             {/* Ganancia */}
-            {renderEffectSlider('Ganancia / Preamp', <Volume2 className="w-3.5 h-3.5 text-sky-400" />, gainDb, -5, 12, 0.5, setGainDb, true)}
+            {renderEffectSlider('Ganancia / Preamp', <Volume2 className="w-3.5 h-3.5 text-sky-400" />, gainDb, -5, 12, 0.5, setGainDb, !!hardwareStatus?.gainLive, true)}
 
             {/* Claridad */}
-            {renderEffectSlider('Claridad (Agudos definidos)', <Sun className="w-3.5 h-3.5 text-amber-400" />, clarity, 0, 1000, 10, setClarity)}
+            {renderEffectSlider('Claridad (Agudos definidos)', <Sun className="w-3.5 h-3.5 text-amber-400" />, clarity, 0, 1000, 10, setClarity, !!hardwareStatus?.clarityLive)}
 
             {/* Ambiente */}
-            {renderEffectSlider('Ambiente (Sala de Conciertos)', <Globe className="w-3.5 h-3.5 text-emerald-400" />, ambiente, 0, 1000, 10, setAmbiente)}
+            {renderEffectSlider('Ambiente (Sala de Conciertos)', <Globe className="w-3.5 h-3.5 text-emerald-400" />, ambiente, 0, 1000, 10, setAmbiente, !!hardwareStatus?.reverbLive)}
 
             {/* Sonido envolvente */}
-            {renderEffectSlider('Sonido envolvente (Virtualizer)', <Sparkles className="w-3.5 h-3.5 text-purple-400" />, surround, 0, 1000, 10, setSurround)}
+            {renderEffectSlider('Sonido envolvente (Virtualizer)', <Sparkles className="w-3.5 h-3.5 text-purple-400" />, surround, 0, 1000, 10, setSurround, !!hardwareStatus?.virtualizerLive)}
 
             {/* Refuerzo dinámico */}
-            {renderEffectSlider('Refuerzo dinámico (Compresor)', <Zap className="w-3.5 h-3.5 text-orange-400" />, dynamicBoost, 0, 1000, 10, setDynamicBoost)}
+            {renderEffectSlider('Refuerzo dinámico (Compresor)', <Zap className="w-3.5 h-3.5 text-orange-400" />, dynamicBoost, 0, 1000, 10, setDynamicBoost, !!hardwareStatus?.loudnessLive)}
 
             {/* Refuerzo de graves */}
-            {renderEffectSlider('Refuerzo de graves (Bass)', <Sliders className="w-3.5 h-3.5 text-rose-400" />, bassBoost, 0, 1000, 10, setBassBoost)}
+            {renderEffectSlider('Refuerzo de graves (Bass)', <Sliders className="w-3.5 h-3.5 text-rose-400" />, bassBoost, 0, 1000, 10, setBassBoost, !!hardwareStatus?.bassBoostLive)}
           </div>
         </section>
 
-        {/* Live Hardware Diagnostic */}
+        {/* Live Hardware Diagnostic (Will list all queried system sound drivers!) */}
         <HardwareStatusCard
           masterEnabled={enabled}
           concertHallEnabled={ambiente > 0}
@@ -318,7 +373,7 @@ export default function App() {
             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
             <span>Frecuencia y Amplitud Nativas OK</span>
           </div>
-          <span className="font-mono">v1.2.11</span>
+          <span className="font-mono">v1.2.12</span>
         </footer>
       </div>
     </div>
