@@ -215,22 +215,6 @@ export default function App() {
 
       {/* Main Container */}
       <div className="flex-1 max-w-md mx-auto w-full px-4 py-4 flex flex-col gap-4">
-        
-        {/* Android Go Warning / Status */}
-        {status.isAndroidGoDetected && (
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex gap-2.5 items-start">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <div className="text-left">
-              <h2 className="text-xs font-bold text-amber-400 leading-none mb-1">
-                Optimizado para Android Go (J2 Core)
-              </h2>
-              <p className="text-[11px] text-neutral-400 leading-relaxed">
-                Sin perillas ni bandas para maximizar el rendimiento de la RAM. El ecualizador del sistema procesará de forma transparente en segundo plano.
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* Dynamic Preset Cards */}
         <section className="flex flex-col gap-2">
           <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 text-left">

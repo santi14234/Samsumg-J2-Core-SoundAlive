@@ -18,11 +18,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Configurar Java JDK 17 (LTS)
+      - name: Configurar Java JDK 21 (LTS)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
@@ -45,7 +45,7 @@ jobs:
       - name: Compilar APK con Gradle
         run: |
           cd android
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace --info
           cd ..
           mkdir -p output_apk
           find android/app/build/outputs/apk/debug -name "*.apk" -exec cp {} output_apk/SoundAlive-Lite.apk \;
