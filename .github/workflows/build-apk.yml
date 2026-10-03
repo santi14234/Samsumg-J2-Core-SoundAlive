@@ -27,8 +27,7 @@ jobs:
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
         with:
-          api-level: 34
-          build-tools-version: 34.0.0
+          packages: 'platforms;android-34 build-tools;34.0.0'
 
       - name: Instalar dependencias
         run: npm install --legacy-peer-deps
