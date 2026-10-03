@@ -142,7 +142,7 @@ public class AudioEffectsManager {
             equalizers.put(sessionId, eq);
             hasEqualizerHardware = true;
             Log.d(TAG, "Equalizer OK on session " + sessionId);
-        } catch (UnsupportedOperationException | RuntimeException e) {
+        } catch (RuntimeException e) {
             Log.w(TAG, "Equalizer rejected by AudioFlinger (Status -38 or HAL missing): " + e.getMessage());
             lastAudioFlingerError = e.getMessage();
             isAndroidGoDetected = true;
@@ -158,7 +158,7 @@ public class AudioEffectsManager {
             bassBoosts.put(sessionId, bb);
             hasBassBoostHardware = true;
             Log.d(TAG, "BassBoost OK on session " + sessionId);
-        } catch (UnsupportedOperationException | RuntimeException e) {
+        } catch (RuntimeException e) {
             Log.w(TAG, "BassBoost rejected by AudioFlinger: " + e.getMessage());
             lastAudioFlingerError = e.getMessage();
             isAndroidGoDetected = true;
@@ -175,7 +175,7 @@ public class AudioEffectsManager {
             loudnessEnhancers.put(sessionId, le);
             hasLoudnessEnhancerHardware = true;
             Log.d(TAG, "LoudnessEnhancer OK on session " + sessionId);
-        } catch (UnsupportedOperationException | RuntimeException e) {
+        } catch (RuntimeException e) {
             Log.w(TAG, "LoudnessEnhancer rejected by AudioFlinger: " + e.getMessage());
         } catch (Exception e) {
             Log.w(TAG, "LoudnessEnhancer init error: " + e.getMessage());
@@ -189,7 +189,7 @@ public class AudioEffectsManager {
             envReverbs.put(sessionId, env);
             hasReverbHardware = true;
             Log.d(TAG, "EnvironmentalReverb OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
-        } catch (UnsupportedOperationException | RuntimeException e) {
+        } catch (RuntimeException e) {
             Log.w(TAG, "EnvironmentalReverb rejected by AudioFlinger (Status -38): " + e.getMessage());
             lastAudioFlingerError = e.getMessage();
             isAndroidGoDetected = true;
@@ -205,7 +205,7 @@ public class AudioEffectsManager {
             presetReverbs.put(sessionId, rev);
             hasReverbHardware = true;
             Log.d(TAG, "PresetReverb (LARGEHALL) OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
-        } catch (UnsupportedOperationException | RuntimeException e) {
+        } catch (RuntimeException e) {
             Log.w(TAG, "PresetReverb rejected by AudioFlinger (Status -38): " + e.getMessage());
             lastAudioFlingerError = e.getMessage();
             isAndroidGoDetected = true;
@@ -223,7 +223,7 @@ public class AudioEffectsManager {
             virtualizers.put(sessionId, virt);
             hasVirtualizerHardware = true;
             Log.d(TAG, "Virtualizer OK on session " + sessionId);
-        } catch (UnsupportedOperationException | RuntimeException e) {
+        } catch (RuntimeException e) {
             Log.w(TAG, "Virtualizer rejected by AudioFlinger (Status -38): " + e.getMessage());
             lastAudioFlingerError = e.getMessage();
             isAndroidGoDetected = true;
