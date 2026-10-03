@@ -39,7 +39,7 @@ jobs:
       - name: Compilar APK con Gradle
         run: |
           cd android
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon
           cd ..
           mkdir -p output_apk
           find android/app/build/outputs/apk/debug -name "*.apk" -exec cp {} output_apk/SoundAlive-Lite.apk \;
