@@ -1,24 +1,6 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState, useEffect } from 'react';
 import {
-  EqualizerPreset,
-  SOUNDALIVE_PRESETS,
-} from './audio/types';
-import { SoundAliveDials } from './components/SoundAliveDials';
-import { GraphicEqualizer } from './components/GraphicEqualizer';
-import { HardwareStatusCard } from './components/HardwareStatusCard';
-import { AudioPlayerBar } from './components/AudioPlayerBar';
-import { Track, generateDemoTrackBlob } from './audio/demoAudio';
-import { soundAliveAudioEngine } from './audio/soundAliveEngine';
-import {
   syncNativeMasterEnabled,
-  syncNativeBandLevel,
-  syncNativeSamsungDials,
-  syncNativeGain,
   syncNativeClarity,
   syncNativeAmbiente,
   syncNativeSurround,
@@ -30,806 +12,434 @@ import {
   isNativeAndroidApp,
 } from './utils/nativeBridge';
 import {
-  Sliders,
-  Radio,
   Power,
-  CheckCircle2,
-  AlertCircle,
-  Volume2,
   Sparkles,
   Zap,
   Globe,
   Sun,
   Activity,
-  Bookmark,
-  Trash2,
-  Save,
-  X,
+  Sliders,
+  Volume2,
+  Headphones,
+  Compass,
+  AlertTriangle,
 } from 'lucide-react';
 
-const INITIAL_BANDS = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+interface FxSoundPreset {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  clarity: number;       // 0 - 1000
+  ambiente: number;      // 0 - 1000
+  surround: number;      // 0 - 1000
+  bassBoost: number;     // 0 - 1000
+  dynamicBoost: number;  // 0 - 1000
+}
+
+const FXSOUND_PRESETS: FxSoundPreset[] = [
+  {
+    id: 'normal',
+    name: 'Normal (Plano)',
+    icon: 'Compass',
+    description: 'Sonido sin procesar, firma acústica plana original',
+    clarity: 0,
+    ambiente: 0,
+    surround: 0,
+    bassBoost: 0,
+    dynamicBoost: 0,
+  },
+  {
+    id: 'music',
+    name: 'Música Hifi',
+    icon: 'Headphones',
+    description: 'Ajuste balanceado con claridad vocal y graves cálidos',
+    clarity: 500,
+    ambiente: 300,
+    surround: 350,
+    bassBoost: 450,
+    dynamicBoost: 200,
+  },
+  {
+    id: 'movie',
+    name: 'Cine 3D',
+    icon: 'Sparkles',
+    description: 'Efecto de sala cinematográfica con atmósfera expandida',
+    clarity: 600,
+    ambiente: 650,
+    surround: 750,
+    bassBoost: 500,
+    dynamicBoost: 400,
+  },
+  {
+    id: 'gaming',
+    name: 'Videojuegos',
+    icon: 'Zap',
+    description: 'Envolvente tridimensional para pasos claros y explosiones',
+    clarity: 400,
+    ambiente: 500,
+    surround: 800,
+    bassBoost: 600,
+    dynamicBoost: 500,
+  },
+  {
+    id: 'voice',
+    name: 'Voz / Podcast',
+    icon: 'Sun',
+    description: 'Enfoque absoluto en diálogos reduciendo ruidos pesados',
+    clarity: 800,
+    ambiente: 100,
+    surround: 100,
+    bassBoost: 100,
+    dynamicBoost: 300,
+  },
+  {
+    id: 'bass_booster',
+    name: 'Super Graves',
+    icon: 'Volume2',
+    description: 'Máxima profundidad en bajas frecuencias para música urbana',
+    clarity: 200,
+    ambiente: 200,
+    surround: 300,
+    bassBoost: 900,
+    dynamicBoost: 300,
+  },
+];
 
 export default function App() {
   const [enabled, setEnabled] = useState(true);
-  const [mode, setMode] = useState<'basic' | 'advanced'>('basic');
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('normal');
-  const [bands, setBands] = useState<number[]>(INITIAL_BANDS);
-  const [bassTreble, setBassTreble] = useState<number>(0);
-  const [instrumentVocal, setInstrumentVocal] = useState<number>(0);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('music');
 
-  // FxSound Pro individual separate effect sliders (0 - 1000)
-  const [clarity, setClarity] = useState<number>(0);
-  const [ambiente, setAmbiente] = useState<number>(0);
-  const [surround, setSurround] = useState<number>(0);
-  const [dynamicBoost, setDynamicBoost] = useState<number>(0);
-  const [bassBoost, setBassBoost] = useState<number>(0);
-  const [gainDb, setGainDb] = useState<number>(0);
+  // Core FxSound effects values (0 - 1000)
+  const [clarity, setClarity] = useState<number>(500);
+  const [ambiente, setAmbiente] = useState<number>(300);
+  const [surround, setSurround] = useState<number>(350);
+  const [bassBoost, setBassBoost] = useState<number>(450);
+  const [dynamicBoost, setDynamicBoost] = useState<number>(200);
 
-  // Audio Player & DSP Engine Integration
-  const audioRef = React.useRef<HTMLAudioElement | null>(null);
-  const [tracks, setTracks] = useState<Track[]>([]);
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isLooping, setIsLooping] = useState(true);
-
-  // Generate demo tracks on startup for testing SoundAlive 3D & Reverb immediately
-  useEffect(() => {
-    let mounted = true;
-    async function loadTracks() {
-      try {
-        const [synthUrl, acousticUrl, funkUrl] = await Promise.all([
-          generateDemoTrackBlob('synthwave'),
-          generateDemoTrackBlob('acoustic'),
-          generateDemoTrackBlob('funk'),
-        ]);
-
-        const initialTracks: Track[] = [
-          {
-            id: 'synthwave',
-            title: 'Samsung Galaxy Neon Synth (Test 3D)',
-            artist: 'SoundAlive DSP Engine',
-            genre: 'Surround / Bass 3D',
-            durationSec: 14,
-            url: synthUrl,
-          },
-          {
-            id: 'acoustic',
-            title: 'Concert Hall Acoustic Live (Test Reverb)',
-            artist: 'Symphony Hall',
-            genre: 'Ambiente / Sala Conciertos',
-            durationSec: 10,
-            url: acousticUrl,
-          },
-          {
-            id: 'funk',
-            title: 'Groove & Bass Slap (Test EQ & Bass)',
-            artist: 'Exynos Audio Lab',
-            genre: 'Funk / Percusión',
-            durationSec: 12,
-            url: funkUrl,
-          },
-        ];
-
-        if (mounted) {
-          setTracks(initialTracks);
-          setCurrentTrack(initialTracks[0]);
-        }
-      } catch (err) {
-        console.warn('Error creating demo tracks:', err);
-      }
-    }
-
-    loadTracks();
-    return () => { mounted = false; };
-  }, []);
-
-  // Sync currentTrack to <audio> element
-  useEffect(() => {
-    if (audioRef.current && currentTrack?.url) {
-      audioRef.current.src = currentTrack.url;
-      audioRef.current.loop = isLooping;
-      if (isPlaying) {
-        audioRef.current.play().catch(() => setIsPlaying(false));
-      }
-    }
-  }, [currentTrack]);
-
-  // Synchronize ALL UI controls to Web Audio DSP engine in real time
-  useEffect(() => {
-    soundAliveAudioEngine.applyState({
-      enabled,
-      mode,
-      selectedPresetId,
-      bands,
-      bassTreble,
-      instrumentVocal,
-      tubeAmp: false,
-      tubeAmpDrive: 0.5,
-      surround3D: surround > 0,
-      surroundLevel: surround > 600 ? 'high' : surround > 300 ? 'medium' : 'low',
-      surroundAmount: surround,
-      concertHall: ambiente > 0,
-      concertHallSize: ambiente > 600 ? 'cathedral' : ambiente > 300 ? 'auditorium' : 'club',
-      concertHallAmount: ambiente,
-      gainDb,
-      bassBoost: bassBoost > 0,
-      bassBoostLevel: Math.round((bassBoost / 1000) * 10),
-      clarity: clarity > 0,
-      clarityLevel: Math.round((clarity / 1000) * 10),
-      uhqUpscaler: true,
-      adaptSound: 'off',
-      adaptSoundCustomL: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-      adaptSoundCustomR: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    });
-  }, [enabled, mode, selectedPresetId, bands, bassTreble, instrumentVocal, bassBoost, clarity, ambiente, surround, gainDb]);
-
-  const handleTogglePlay = async () => {
-    if (!audioRef.current || !currentTrack) return;
-    try {
-      await soundAliveAudioEngine.resumeContext();
-      soundAliveAudioEngine.init(audioRef.current);
-      if (isPlaying) {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        await audioRef.current.play();
-        setIsPlaying(true);
-      }
-    } catch (e) {
-      console.warn('Playback error:', e);
-      setIsPlaying(false);
-    }
-  };
-
-  const handleNextTrack = () => {
-    if (tracks.length === 0 || !currentTrack) return;
-    const currentIndex = tracks.findIndex((t) => t.id === currentTrack.id);
-    const nextIndex = (currentIndex + 1) % tracks.length;
-    setCurrentTrack(tracks[nextIndex]);
-  };
-
-  const handleToggleLoop = () => {
-    setIsLooping((prev) => {
-      const next = !prev;
-      if (audioRef.current) audioRef.current.loop = next;
-      return next;
-    });
-  };
-
-  const handleSelectTrack = (track: Track) => {
-    setCurrentTrack(track);
-  };
-
-  const handleUploadFile = (file: File) => {
-    const objectUrl = URL.createObjectURL(file);
-    const newTrack: Track = {
-      id: `custom-${Date.now()}`,
-      title: file.name.replace(/\.[^/.]+$/, ''),
-      artist: 'Mi Música Local (J2 Core)',
-      genre: 'Archivo Local',
-      durationSec: 0,
-      url: objectUrl,
-      isCustom: true,
-    };
-    setTracks((prev) => [newTrack, ...prev]);
-    setCurrentTrack(newTrack);
-    setIsPlaying(false);
-  };
-
-  interface UserProfileSlot {
-    id: number;
-    name: string;
-    bands: number[];
-    bassTreble: number;
-    instrumentVocal: number;
-    gainDb: number;
-    clarity: number;
-    ambiente: number;
-    surround: number;
-    dynamicBoost: number;
-    bassBoost: number;
-    updatedAt: string;
-  }
-
-  const [userProfiles, setUserProfiles] = useState<Record<number, UserProfileSlot>>(() => {
-    try {
-      const saved = localStorage.getItem('soundalive_user_profiles_10slots');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return {};
+  // Native diagnostic state
+  const [status, setStatus] = useState<NativeEffectsStatus>({
+    masterEnabled: true,
+    equalizerActive: false,
+    equalizerBands: 0,
+    bassBoostSupported: true,
+    bassBoostActive: false,
+    bassBoostStrength: 0,
+    concertHallEnabled: false,
+    concertHallActive: false,
+    presetReverbSupported: false,
+    envReverbSupported: false,
+    roomAcousticSupported: false,
+    concertHallEngine: 'Nativo',
+    sessionsCount: 0,
+    activeSessions: [],
+    hardwareEngines: [],
+    isAudioOutputActive: false,
+    isAndroidGoDetected: true,
   });
-
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [profileInputName, setProfileInputName] = useState('');
-
-  const saveToSlot = (slotId: number) => {
-    const name = profileInputName.trim() || `Perfil ${slotId}`;
-    const profile: UserProfileSlot = {
-      id: slotId,
-      name,
-      bands: [...bands],
-      bassTreble,
-      instrumentVocal,
-      gainDb,
-      clarity,
-      ambiente,
-      surround,
-      dynamicBoost,
-      bassBoost,
-      updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    const updated = { ...userProfiles, [slotId]: profile };
-    setUserProfiles(updated);
-    setProfileInputName('');
-    try {
-      localStorage.setItem('soundalive_user_profiles_10slots', JSON.stringify(updated));
-    } catch (e) {}
-  };
-
-  const loadFromSlot = (profile: UserProfileSlot) => {
-    setBands([...profile.bands]);
-    setBassTreble(profile.bassTreble);
-    setInstrumentVocal(profile.instrumentVocal);
-    setGainDb(profile.gainDb);
-    setClarity(profile.clarity);
-    setAmbiente(profile.ambiente);
-    setSurround(profile.surround);
-    setDynamicBoost(profile.dynamicBoost);
-    setBassBoost(profile.bassBoost);
-    setSelectedPresetId(`slot_${profile.id}`);
-
-    syncNativeGain(profile.gainDb);
-    syncNativeClarity(profile.clarity);
-    syncNativeAmbiente(profile.ambiente);
-    syncNativeSurround(profile.surround);
-    syncNativeDynamicBoost(profile.dynamicBoost);
-    syncNativeBassBoost(profile.bassBoost);
-    syncNativeSamsungDials(profile.bassTreble, profile.instrumentVocal);
-    profile.bands.forEach((g, idx) => syncNativeBandLevel(idx, g));
-    setShowProfileModal(false);
-  };
-
-  const deleteSlot = (slotId: number) => {
-    const updated = { ...userProfiles };
-    delete updated[slotId];
-    setUserProfiles(updated);
-    try {
-      localStorage.setItem('soundalive_user_profiles_10slots', JSON.stringify(updated));
-    } catch (e) {}
-  };
-
-  // Live hardware state polled from the system
-  const [hardwareStatus, setHardwareStatus] = useState<NativeEffectsStatus | null>(null);
 
   // Start background service on mount
   useEffect(() => {
-    startNativeBackgroundService();
+    if (isNativeAndroidApp()) {
+      startNativeBackgroundService();
+    }
   }, []);
 
-  // Poll hardware status every 800ms to immediately detect any system audio change
-  useEffect(() => {
-    let mounted = true;
-    const fetchStatus = async () => {
-      const hasBandsModified = bands.some((b) => b !== 0) || bassTreble !== 0 || instrumentVocal !== 0;
-      const isAnyModified = enabled && (hasBandsModified || bassBoost > 0 || ambiente > 0 || surround > 0 || clarity > 0 || dynamicBoost > 0 || gainDb !== 0);
-
-      if (!isNativeAndroidApp()) {
-        // Fallback for browser preview: directly mirrors applied modifications
-        if (mounted) {
-          setHardwareStatus({
-            masterEnabled: enabled,
-            equalizerActive: enabled,
-            equalizerBands: 9,
-            bassBoostSupported: true,
-            bassBoostActive: enabled && bassBoost > 0,
-            bassBoostStrength: bassBoost,
-            concertHallEnabled: ambiente > 0,
-            concertHallActive: enabled && ambiente > 0,
-            presetReverbSupported: true,
-            envReverbSupported: true,
-            roomAcousticSupported: true,
-            concertHallEngine: 'SoundAlive Reverb (Samsung)',
-            sessionsCount: isAnyModified ? 1 : 0,
-            activeSessions: [0],
-            hardwareEngines: [
-              'SoundAlive Equalizer (Samsung Electronics) - 53457161',
-              'SoundAlive Bass Boost (Samsung Electronics) - 863902e0',
-              'PresetReverb (Samsung SoundAlive) - 47382d60',
-              'EnvironmentalReverb (Android Native) - c2e5d5f0',
-              'Dolby Audio Driver (Samsung Core Engine) - e0e6539b',
-            ],
-            audioModifiedInSystem: isAnyModified,
-            eqLive: enabled && hasBandsModified,
-            bassBoostLive: enabled && bassBoost > 0,
-            reverbLive: enabled && ambiente > 0,
-            virtualizerLive: enabled && surround > 0,
-            clarityLive: enabled && clarity > 0,
-            loudnessLive: enabled && dynamicBoost > 0,
-            gainLive: enabled && gainDb !== 0,
-          });
-        }
-        return;
-      }
-
-      try {
-        const res = await getNativeEffectsStatus();
-        if (mounted && res) {
-          setHardwareStatus(res);
-        }
-      } catch (err) {
-        console.warn('Error polling status:', err);
-      }
-    };
-
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 800);
-
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, [enabled, clarity, ambiente, surround, dynamicBoost, bassBoost, gainDb, bands, bassTreble, instrumentVocal]);
-
-  // Sync Master Switch to Android
+  // Sync state with native background service
   useEffect(() => {
     syncNativeMasterEnabled(enabled);
-  }, [enabled]);
-
-  // Sync Samsung Dials & FxSound effects
-  useEffect(() => {
-    if (mode === 'basic') {
-      syncNativeSamsungDials(bassTreble, instrumentVocal);
+    if (enabled) {
+      syncNativeClarity(clarity);
+      syncNativeAmbiente(ambiente);
+      syncNativeSurround(surround);
+      syncNativeBassBoost(bassBoost);
+      syncNativeDynamicBoost(dynamicBoost);
     }
-  }, [bassTreble, instrumentVocal, mode]);
+  }, [enabled, clarity, ambiente, surround, bassBoost, dynamicBoost]);
 
+  // Periodic status poll (every 2.5s)
   useEffect(() => {
-    if (mode === 'advanced') {
-      bands.forEach((gain, index) => {
-        syncNativeBandLevel(index, gain);
-      });
+    let timer: any;
+    async function updateStatus() {
+      if (isNativeAndroidApp()) {
+        const res = await getNativeEffectsStatus();
+        if (res) {
+          setStatus(res);
+        }
+      }
     }
-  }, [bands, mode]);
+    updateStatus();
+    timer = setInterval(updateStatus, 2500);
+    return () => clearInterval(timer);
+  }, []);
 
-  useEffect(() => { syncNativeGain(gainDb); }, [gainDb]);
-  useEffect(() => { syncNativeClarity(clarity); }, [clarity]);
-  useEffect(() => { syncNativeAmbiente(ambiente); }, [ambiente]);
-  useEffect(() => { syncNativeSurround(surround); }, [surround]);
-  useEffect(() => { syncNativeDynamicBoost(dynamicBoost); }, [dynamicBoost]);
-  useEffect(() => { syncNativeBassBoost(bassBoost); }, [bassBoost]);
-
-  // Handlers
-  const handleToggleMaster = () => { setEnabled((prev) => !prev); };
-
-  const handleSelectPreset = (preset: EqualizerPreset) => {
+  // Handle Preset Selection
+  const applyPreset = (preset: FxSoundPreset) => {
     setSelectedPresetId(preset.id);
-    setBands([...preset.bands]);
-    setBassTreble(preset.bassTreble);
-    setInstrumentVocal(preset.instrumentVocal);
-    syncNativeSamsungDials(preset.bassTreble, preset.instrumentVocal);
-    preset.bands.forEach((g, idx) => syncNativeBandLevel(idx, g));
-  };
-
-  const handleChangeBand = (index: number, value: number) => {
-    setBands((prev) => {
-      const next = [...prev];
-      next[index] = value;
-      return next;
-    });
-    setSelectedPresetId('custom');
-    syncNativeBandLevel(index, value);
-  };
-
-  const handleResetBands = () => {
-    setBands([...INITIAL_BANDS]);
-    setSelectedPresetId('normal');
-    INITIAL_BANDS.forEach((_, idx) => syncNativeBandLevel(idx, 0));
-  };
-
-  const hasAudioChanged = !!hardwareStatus?.audioModifiedInSystem;
-
-  // Helper for rendering sliders with true detection of applied audio changes
-  const renderEffectSlider = (
-    label: string,
-    icon: React.ReactNode,
-    value: number,
-    min: number,
-    max: number,
-    step: number,
-    onChange: (val: number) => void,
-    isApplied: boolean,
-    isGain = false
-  ) => {
-    let statusText = 'PLANO';
-    let ledColorClass = 'bg-neutral-600';
-    let textColorClass = 'text-neutral-500';
-
-    if (!enabled) {
-      statusText = 'DESACTIVADO';
-      ledColorClass = 'bg-rose-600';
-      textColorClass = 'text-rose-500';
-    } else if (isApplied) {
-      statusText = 'CAMBIO APLICADO';
-      ledColorClass = 'bg-emerald-500 shadow-emerald-500/80 animate-pulse';
-      textColorClass = 'text-emerald-400 font-extrabold';
-    } else {
-      statusText = 'SIN CAMBIO';
-      ledColorClass = 'bg-neutral-600';
-      textColorClass = 'text-neutral-500';
-    }
-
-    return (
-      <div className="bg-neutral-900/50 border border-neutral-900 rounded-xl p-3 flex flex-col gap-2 hover:border-neutral-800 transition-colors">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-neutral-200 flex items-center gap-1.5">
-            {icon}
-            {label}
-          </span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-bold text-sky-400">
-              {isGain ? `${value > 0 ? '+' : ''}${value}` : value}
-            </span>
-            {/* REAL RED/GREEN LED HARDWARE INDICATOR LIGHT */}
-            <div className="flex items-center gap-1.5 bg-black/60 px-2 py-0.5 rounded border border-neutral-800">
-              <span className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.3)] ${ledColorClass}`} />
-              <span className={`text-[9px] font-bold tracking-wider ${textColorClass}`}>
-                {statusText}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          onChange={(e) => {
-            const val = isGain ? parseFloat(e.target.value) : parseInt(e.target.value);
-            onChange(val);
-          }}
-          disabled={!enabled}
-          className="w-full accent-sky-500 bg-neutral-950 h-1.5 rounded-lg appearance-none cursor-pointer disabled:opacity-40"
-        />
-      </div>
-    );
+    setClarity(preset.clarity);
+    setAmbiente(preset.ambiente);
+    setSurround(preset.surround);
+    setBassBoost(preset.bassBoost);
+    setDynamicBoost(preset.dynamicBoost);
   };
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-start p-3 sm:p-5 select-none overscroll-none touch-pan-y">
-      <div className="w-full max-w-lg flex flex-col gap-3">
-        {/* Top Header & Master Switch */}
-        <header className="flex items-center justify-between py-2 border-b border-neutral-900">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400">
-              <Sliders className="w-4 h-4" />
-            </div>
-            <div>
-              <h1 className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5">
-                SoundAlive Pro
-                <span className="text-[9px] font-semibold px-1 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/40">
-                  LITE & SAVE BATTERY
-                </span>
-              </h1>
-              <p className="text-[10px] text-neutral-500">
-                Samsung Galaxy Audio Engine modded
+    <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans flex flex-col antialiased">
+      {/* Dynamic Header */}
+      <header className="sticky top-0 z-20 bg-neutral-950/90 backdrop-blur-md border-b border-neutral-900 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center font-bold text-white shadow-lg shadow-emerald-500/20">
+            S
+          </div>
+          <div>
+            <h1 className="text-sm font-bold tracking-tight text-neutral-100 flex items-center gap-1.5">
+              SoundAlive Lite <span className="text-[10px] text-emerald-400 font-normal px-1.5 py-0.5 bg-emerald-950/80 rounded">FxSound Pro</span>
+            </h1>
+            <p className="text-[10px] text-neutral-500">Optimizador dinámico ultraligero</p>
+          </div>
+        </div>
+
+        {/* Master Power Toggle Button */}
+        <button
+          onClick={() => setEnabled(!enabled)}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${
+            enabled
+              ? 'bg-emerald-500 text-neutral-950 shadow-lg shadow-emerald-500/30 font-bold active:scale-95'
+              : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 active:scale-95'
+          }`}
+        >
+          <Power className={`w-3.5 h-3.5 ${enabled ? 'stroke-[2.5px]' : ''}`} />
+          <span>{enabled ? 'ACTIVO' : 'BYPASS'}</span>
+        </button>
+      </header>
+
+      {/* Main Container */}
+      <div className="flex-1 max-w-md mx-auto w-full px-4 py-4 flex flex-col gap-4">
+        
+        {/* Android Go Warning / Status */}
+        {status.isAndroidGoDetected && (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex gap-2.5 items-start">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-left">
+              <h2 className="text-xs font-bold text-amber-400 leading-none mb-1">
+                Optimizado para Android Go (J2 Core)
+              </h2>
+              <p className="text-[11px] text-neutral-400 leading-relaxed">
+                Sin perillas ni bandas para maximizar el rendimiento de la RAM. El ecualizador del sistema procesará de forma transparente en segundo plano.
               </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleToggleMaster}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold transition-all border ${
-              enabled
-                ? 'bg-sky-500 text-black border-sky-400 shadow-[0_0_10px_rgba(14,165,233,0.25)]'
-                : 'bg-neutral-900 text-neutral-500 border-neutral-800'
-            }`}
-          >
-            <Power className="w-3 h-3" />
-            {enabled ? 'ACTIVADO' : 'APAGADO'}
-          </button>
-        </header>
-
-        {/* Global Audio Modification Detector (Real system change detector) */}
-        <div className={`p-2.5 rounded-xl border flex items-center justify-between transition-colors ${
-          hasAudioChanged
-            ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-300'
-            : 'bg-neutral-950 border-neutral-900 text-neutral-400'
-        }`}>
-          <div className="flex items-center gap-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${
-              hasAudioChanged ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-600'
-            }`} />
-            <div>
-              <span className="text-[11px] font-bold block">
-                {hasAudioChanged ? '🟢 AUDIO DEL SISTEMA MODIFICADO' : '⚪ AUDIO ORIGINAL (Sin modificaciones)'}
-              </span>
-              <span className="text-[9px] text-neutral-500 block">
-                {hasAudioChanged
-                  ? 'El sistema ha recibido y aplicado los cambios al procesador DSP'
-                  : 'Todos los parámetros están en neutro o el sistema está en sonido original'}
-              </span>
-            </div>
-          </div>
-          <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${
-            hasAudioChanged ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-neutral-900 border-neutral-800 text-neutral-500'
-          }`}>
-            {hasAudioChanged ? 'ACTIVO' : 'NEUTRO'}
-          </span>
-        </div>
-
-        {/* Android Go / Hardware Diagnostic Notice (Based on logcat AudioFlinger status: -38) */}
-        <div className="bg-gradient-to-r from-amber-500/10 via-sky-500/10 to-indigo-500/10 border border-amber-500/30 rounded-2xl p-3 flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
-              <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-              <span>Aviso de ROM: Samsung Galaxy J2 Core (Android Go)</span>
-            </div>
-            <span className="text-[9px] px-2 py-0.5 rounded font-mono font-bold bg-amber-950 text-amber-300 border border-amber-800/50">
-              AudioFlinger: status -38
-            </span>
-          </div>
-          <p className="text-[11px] text-neutral-300 leading-snug">
-            Samsung eliminó las librerías binarias nativas (<code className="font-mono text-amber-300">/vendor/lib/soundfx/</code>) en el firmware Android Go para ahorrar memoria, por lo que ninguna app puede aplicar <em>Virtualizer</em> o <em>Ambiente</em> a apps externas (como YouTube) sin Root.
-          </p>
-          <div className="bg-black/60 rounded-xl p-2.5 border border-emerald-500/30 flex items-center justify-between gap-2">
-            <div className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 shrink-0 text-emerald-400 animate-pulse" />
-              <span>¡Solución activa en el Reproductor Integrado!</span>
-            </div>
-            <span className="text-[9px] text-emerald-300 font-mono">
-              DSP 32-bit OK
-            </span>
-          </div>
-          <p className="text-[10px] text-neutral-400 leading-tight">
-            🎧 <strong>Usa el reproductor abajo:</strong> Procesa el <strong>Sonido Envolvente 3D</strong> y la <strong>Sala de Conciertos</strong> directamente por software. Puedes reproducir las pistas de prueba o cargar cualquier canción de tu teléfono con el botón <strong>+ Canción</strong>.
-          </p>
-        </div>
-
-        {/* Mode Tabs */}
-        <div className="grid grid-cols-2 p-1 rounded-xl bg-neutral-950 border border-neutral-900">
-          <button
-            type="button"
-            onClick={() => setMode('basic')}
-            className={`py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-              mode === 'basic' ? 'bg-neutral-900 text-sky-400 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            <Radio className="w-3.5 h-3.5" />
-            Básico (Perillas)
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('advanced')}
-            className={`py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-              mode === 'advanced' ? 'bg-neutral-900 text-sky-400 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            Avanzado (Bandas)
-          </button>
-        </div>
-
-        {/* Presets Strip & 10-Slot Profiles Button */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-          <button
-            type="button"
-            onClick={() => setShowProfileModal(true)}
-            className="px-2.5 py-1 rounded-lg text-[10px] font-extrabold whitespace-nowrap bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 flex items-center gap-1 hover:bg-emerald-900/50 transition-colors shadow-[0_0_10px_rgba(16,185,129,0.2)]"
-          >
-            <Bookmark className="w-3 h-3 text-emerald-400" />
-            <span>Ranuras (10 Perfiles)</span>
-          </button>
-          {SOUNDALIVE_PRESETS.map((p) => {
-            const isSelected = selectedPresetId === p.id;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => handleSelectPreset(p)}
-                disabled={!enabled}
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap transition-colors border ${
-                  isSelected ? 'bg-neutral-900 border-sky-500/50 text-sky-400' : 'bg-black border-neutral-900 text-neutral-500'
-                } disabled:opacity-45`}
-              >
-                {p.name}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 10-Slot Profiles Modal (FxSound Style) */}
-        {showProfileModal && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-md p-4 flex flex-col gap-3 shadow-2xl animate-in fade-in zoom-in duration-200">
-              <div className="flex items-center justify-between border-b border-neutral-900 pb-2">
-                <div className="flex items-center gap-2">
-                  <Bookmark className="w-4 h-4 text-emerald-400" />
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-white">Ranuras de Perfiles Personalizados (10)</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowProfileModal(false)}
-                  className="w-7 h-7 rounded-lg bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-400 hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2 bg-neutral-900/50 p-2 rounded-xl border border-neutral-800/80">
-                <input
-                  type="text"
-                  placeholder="Nombre para guardar el perfil actual..."
-                  value={profileInputName}
-                  onChange={(e) => setProfileInputName(e.target.value)}
-                  className="flex-1 bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-                />
-                <span className="text-[10px] text-neutral-500 font-mono">10 Slots</span>
-              </div>
-
-              <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1 no-scrollbar">
-                {Array.from({ length: 10 }, (_, i) => i + 1).map((slotId) => {
-                  const savedProfile = userProfiles[slotId];
-                  return (
-                    <div
-                      key={slotId}
-                      className={`p-2.5 rounded-xl border flex items-center justify-between transition-all ${
-                        savedProfile
-                          ? 'bg-neutral-900/60 border-emerald-500/30 hover:border-emerald-500/60'
-                          : 'bg-black/40 border-neutral-900 hover:border-neutral-800'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-mono font-bold ${
-                          savedProfile ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-neutral-900 text-neutral-500 border border-neutral-800'
-                        }`}>
-                          {slotId}
-                        </div>
-                        <div>
-                          <span className="text-xs font-bold text-white block">
-                            {savedProfile ? savedProfile.name : `Ranura ${slotId} (Vacía)`}
-                          </span>
-                          <span className="text-[9px] text-neutral-500 block">
-                            {savedProfile ? `Guardado: ${savedProfile.updatedAt}` : 'Listo para guardar tu ecualización actual'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        {savedProfile && (
-                          <button
-                            type="button"
-                            onClick={() => loadFromSlot(savedProfile)}
-                            className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-sky-500/20 border border-sky-500/40 text-sky-300 hover:bg-sky-500/30 transition-colors"
-                          >
-                            Cargar
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => saveToSlot(slotId)}
-                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 transition-colors flex items-center gap-1"
-                        >
-                          <Save className="w-3 h-3" />
-                          <span>{savedProfile ? 'Sobrescribir' : 'Guardar'}</span>
-                        </button>
-                        {savedProfile && (
-                          <button
-                            type="button"
-                            onClick={() => deleteSlot(slotId)}
-                            className="p-1 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20 transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           </div>
         )}
 
-        {/* Main Panel */}
-        <main className="w-full">
-          {mode === 'basic' ? (
-            <SoundAliveDials
-              bassTreble={bassTreble}
-              instrumentVocal={instrumentVocal}
-              onChangeBassTreble={(v) => { setBassTreble(v); setSelectedPresetId('custom'); syncNativeSamsungDials(v, instrumentVocal); }}
-              onChangeInstrumentVocal={(v) => { setInstrumentVocal(v); setSelectedPresetId('custom'); syncNativeSamsungDials(bassTreble, v); }}
-              disabled={!enabled}
-            />
-          ) : (
-            <GraphicEqualizer
-              bands={bands}
-              onChangeBand={handleChangeBand}
-              onReset={handleResetBands}
-              disabled={!enabled}
-            />
-          )}
-        </main>
+        {/* Dynamic Preset Cards */}
+        <section className="flex flex-col gap-2">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 text-left">
+            Perfiles de Optimización
+          </span>
+          <div className="grid grid-cols-3 gap-2">
+            {FXSOUND_PRESETS.map((preset) => {
+              const isActive = selectedPresetId === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  onClick={() => applyPreset(preset)}
+                  disabled={!enabled}
+                  className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center gap-1.5 transition-all duration-200 ${
+                    !enabled
+                      ? 'bg-neutral-900/40 border-neutral-900/60 opacity-40 cursor-not-allowed'
+                      : isActive
+                      ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                      : 'bg-neutral-900 border-neutral-900 hover:border-neutral-800 text-neutral-300'
+                  }`}
+                >
+                  <span className="text-[11px] font-bold tracking-tight line-clamp-1">
+                    {preset.name.split(' ')[0]}
+                  </span>
+                  <span className="text-[10px] opacity-70 line-clamp-1 font-mono">
+                    {preset.id === 'normal' ? '0%' : `${Math.round((preset.clarity + preset.bassBoost) / 20)}%`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-neutral-400 text-left italic px-1">
+            "{FXSOUND_PRESETS.find(p => p.id === selectedPresetId)?.description}"
+          </p>
+        </section>
 
-        {/* FxSound Pro Cleaned Panel with Real Hardware Lights */}
-        <section className="bg-neutral-950 border border-neutral-900 rounded-2xl p-3 flex flex-col gap-3">
-          <div className="flex items-center justify-between border-b border-neutral-900 pb-1.5">
-            <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-extrabold uppercase tracking-wider">
-              <Sparkles className="w-3 h-3 text-emerald-400 animate-pulse" />
-              <span>FxSound Pro Efectos Avanzados</span>
-            </div>
-            <span className="text-[9px] text-neutral-500 font-bold uppercase tracking-wider">
-              {hasAudioChanged ? '🟢 CAMBIOS APLICADOS' : '⚪ SONIDO PLANO'}
+        {/* FxSound Sliders Section */}
+        <section className={`bg-neutral-900/50 border border-neutral-900 rounded-2xl p-4 flex flex-col gap-4 transition-opacity duration-300 ${
+          enabled ? 'opacity-100' : 'opacity-40 pointer-events-none'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-neutral-300 flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-emerald-400" /> Modulación de FxSound
             </span>
+            <span className="text-[10px] text-neutral-500">Rango: 0 - 100%</span>
           </div>
 
-          <div className="flex flex-col gap-2.5">
-            {/* Ganancia */}
-            {renderEffectSlider('Ganancia / Preamp', <Volume2 className="w-3.5 h-3.5 text-sky-400" />, gainDb, -5, 12, 0.5, setGainDb, enabled && (gainDb !== 0 || !!hardwareStatus?.gainLive), true)}
+          <div className="flex flex-col gap-4">
+            {/* Clarity Slider */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-neutral-300 font-medium flex items-center gap-1.5">
+                  <Sun className="w-3.5 h-3.5 text-amber-400" /> Claridad Vocal
+                </span>
+                <span className="text-emerald-400 font-bold font-mono">
+                  {Math.round(clarity / 10)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1000"
+                step="10"
+                value={clarity}
+                onChange={(e) => {
+                  setClarity(parseInt(e.target.value));
+                  setSelectedPresetId('custom');
+                }}
+                className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
 
-            {/* Claridad */}
-            {renderEffectSlider('Claridad (Agudos definidos)', <Sun className="w-3.5 h-3.5 text-amber-400" />, clarity, 0, 1000, 10, setClarity, enabled && (clarity > 0 || !!hardwareStatus?.clarityLive))}
+            {/* Bass Boost Slider */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-neutral-300 font-medium flex items-center gap-1.5">
+                  <Volume2 className="w-3.5 h-3.5 text-blue-400" /> Refuerzo de Graves
+                </span>
+                <span className="text-emerald-400 font-bold font-mono">
+                  {Math.round(bassBoost / 10)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1000"
+                step="10"
+                value={bassBoost}
+                onChange={(e) => {
+                  setBassBoost(parseInt(e.target.value));
+                  setSelectedPresetId('custom');
+                }}
+                className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
 
-            {/* Ambiente */}
-            {renderEffectSlider('Ambiente (Sala de Conciertos)', <Globe className="w-3.5 h-3.5 text-emerald-400" />, ambiente, 0, 1000, 10, setAmbiente, enabled && (ambiente > 0 || !!hardwareStatus?.reverbLive))}
+            {/* Surround Slider */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-neutral-300 font-medium flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-purple-400" /> Sonido Envolvente 3D
+                </span>
+                <span className="text-emerald-400 font-bold font-mono">
+                  {Math.round(surround / 10)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1000"
+                step="10"
+                value={surround}
+                onChange={(e) => {
+                  setSurround(parseInt(e.target.value));
+                  setSelectedPresetId('custom');
+                }}
+                className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
 
-            {/* Sonido envolvente */}
-            {renderEffectSlider('Sonido envolvente (Virtualizer)', <Sparkles className="w-3.5 h-3.5 text-purple-400" />, surround, 0, 1000, 10, setSurround, enabled && (surround > 0 || !!hardwareStatus?.virtualizerLive))}
+            {/* Atmosphere Slider */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-neutral-300 font-medium flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Atmósfera de Sala
+                </span>
+                <span className="text-emerald-400 font-bold font-mono">
+                  {Math.round(ambiente / 10)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1000"
+                step="10"
+                value={ambiente}
+                onChange={(e) => {
+                  setAmbiente(parseInt(e.target.value));
+                  setSelectedPresetId('custom');
+                }}
+                className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
 
-            {/* Refuerzo dinámico */}
-            {renderEffectSlider('Refuerzo dinámico (Compresor)', <Zap className="w-3.5 h-3.5 text-orange-400" />, dynamicBoost, 0, 1000, 10, setDynamicBoost, enabled && (dynamicBoost > 0 || !!hardwareStatus?.loudnessLive))}
-
-            {/* Refuerzo de graves */}
-            {renderEffectSlider('Refuerzo de graves (Bass)', <Sliders className="w-3.5 h-3.5 text-rose-400" />, bassBoost, 0, 1000, 10, setBassBoost, enabled && (bassBoost > 0 || !!hardwareStatus?.bassBoostLive))}
+            {/* Dynamic Boost Slider */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-neutral-300 font-medium flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-emerald-400" /> Refuerzo Dinámico (Loudness)
+                </span>
+                <span className="text-emerald-400 font-bold font-mono">
+                  {Math.round(dynamicBoost / 10)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1000"
+                step="10"
+                value={dynamicBoost}
+                onChange={(e) => {
+                  setDynamicBoost(parseInt(e.target.value));
+                  setSelectedPresetId('custom');
+                }}
+                className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
           </div>
         </section>
 
-        {/* Live Hardware Diagnostic (Lists all queried system sound drivers!) */}
-        <HardwareStatusCard
-          masterEnabled={enabled}
-          concertHallEnabled={ambiente > 0}
-          mode={mode}
-          status={hardwareStatus}
-        />
-
-        {/* Footer */}
-        <footer className="flex items-center justify-between text-[10px] text-neutral-600 px-1">
-          <div className="flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-            <span>Frecuencia y Amplitud Nativas OK</span>
+        {/* Live Diagnostics Card */}
+        <section className="bg-neutral-900/30 border border-neutral-900/60 rounded-xl p-3 flex flex-col gap-2 text-left">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                Estado del Motor Nativo
+              </span>
+            </div>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 font-mono">
+              PID {status.sessionsCount > 1 ? `x${status.sessionsCount}` : 'Global'}
+            </span>
           </div>
-          <span className="font-mono">v1.2.28</span>
-        </footer>
 
-        {/* Hidden <audio> element connected to SoundAlive Web Audio DSP */}
-        <audio
-          ref={audioRef}
-          onEnded={handleNextTrack}
-          className="hidden"
-          playsInline
-        />
-
-        {/* Bottom spacer so footer isn't hidden by player bar */}
-        {currentTrack && <div className="h-28 w-full" />}
+          <div className="grid grid-cols-2 gap-2 text-[10px] text-neutral-400">
+            <div className="flex items-center justify-between border-b border-neutral-900/80 pb-1">
+              <span>Claridad:</span>
+              <span className="font-semibold text-neutral-200">{status.clarityLive ? 'Activo' : 'Bypass'}</span>
+            </div>
+            <div className="flex items-center justify-between border-b border-neutral-900/80 pb-1">
+              <span>Graves:</span>
+              <span className="font-semibold text-neutral-200">{status.bassBoostLive ? 'Activo' : 'Bypass'}</span>
+            </div>
+            <div className="flex items-center justify-between border-b border-neutral-900/80 pb-1">
+              <span>Envolvente:</span>
+              <span className="font-semibold text-neutral-200">{status.virtualizerLive ? 'Activo' : 'Bypass'}</span>
+            </div>
+            <div className="flex items-center justify-between border-b border-neutral-900/80 pb-1">
+              <span>Sala/Atmósfera:</span>
+              <span className="font-semibold text-neutral-200">{status.reverbLive ? 'Activo' : 'Bypass'}</span>
+            </div>
+          </div>
+        </section>
       </div>
 
-      {/* Persistent SoundAlive Audio Player Bar */}
-      {currentTrack && (
-        <AudioPlayerBar
-          currentTrack={currentTrack}
-          tracks={tracks}
-          isPlaying={isPlaying}
-          isLooping={isLooping}
-          soundAliveEnabled={enabled}
-          onTogglePlay={handleTogglePlay}
-          onNextTrack={handleNextTrack}
-          onToggleLoop={handleToggleLoop}
-          onSelectTrack={handleSelectTrack}
-          onUploadFile={handleUploadFile}
-          onToggleSoundAlive={handleToggleMaster}
-        />
-      )}
-    </div>
+      {/* Footer */}
+      <footer className="mt-auto py-3 text-center text-[10px] text-neutral-600 border-t border-neutral-900">
+        SoundAlive Lite — Hecho con precisión para Samsung J2 Core
+      </footer>
+    </main>
   );
 }
