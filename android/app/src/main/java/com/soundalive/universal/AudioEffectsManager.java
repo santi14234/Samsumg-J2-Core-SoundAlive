@@ -174,7 +174,7 @@ public class AudioEffectsManager {
         // 5. PresetReverb (Using PRESET_CONCERTHALL for real Samsung SoundAlive Concert Hall feeling)
         try {
             PresetReverb rev = new PresetReverb(EFFECT_PRIORITY, sessionId);
-            rev.setPreset(ambienteStrength > 0 ? PresetReverb.PRESET_CONCERTHALL : PresetReverb.PRESET_NONE);
+            rev.setPreset((short) (ambienteStrength > 0 ? PresetReverb.PRESET_CONCERTHALL : PresetReverb.PRESET_NONE));
             rev.setEnabled(masterEnabled && ambienteStrength > 0);
             presetReverbs.put(sessionId, rev);
             Log.d(TAG, "PresetReverb (CONCERTHALL) OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
@@ -278,7 +278,7 @@ public class AudioEffectsManager {
         }
         for (PresetReverb r : presetReverbs.values()) {
             try {
-                r.setPreset(active ? PresetReverb.PRESET_CONCERTHALL : PresetReverb.PRESET_NONE);
+                r.setPreset((short) (active ? PresetReverb.PRESET_CONCERTHALL : PresetReverb.PRESET_NONE));
                 r.setEnabled(masterEnabled && active);
             } catch (Exception e) {
                 Log.w(TAG, "PresetReverb set error: " + e.getMessage());
