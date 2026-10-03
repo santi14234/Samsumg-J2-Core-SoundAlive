@@ -454,25 +454,40 @@ export class SoundAliveEngine {
       }
     }
 
-    // 3D Surround
+    // Input Gain / Preamp
+    if (this.inputGain && state.gainDb !== undefined) {
+      const linearGain = Math.pow(10, state.gainDb / 20);
+      this.inputGain.gain.setTargetAtTime(linearGain, now, t);
+    }
+
+    // 3D Surround (Haas stereo widener)
     if (this.surroundWetGain && this.surroundDryGain) {
       if (state.surround3D) {
         let amount = 0.55;
-        if (state.surroundLevel === 'low') amount = 0.35;
-        if (state.surroundLevel === 'high') amount = 0.85;
+        if (state.surroundAmount !== undefined && state.surroundAmount > 0) {
+          amount = (state.surroundAmount / 1000) * 0.95;
+        } else if (state.surroundLevel === 'low') {
+          amount = 0.35;
+        } else if (state.surroundLevel === 'high') {
+          amount = 0.85;
+        }
         this.surroundWetGain.gain.setTargetAtTime(amount, now, t);
-        this.surroundDryGain.gain.setTargetAtTime(0.85, now, t);
+        this.surroundDryGain.gain.setTargetAtTime(Math.max(0.2, 1.0 - (amount * 0.25)), now, t);
       } else {
         this.surroundWetGain.gain.setTargetAtTime(0.0, now, t);
         this.surroundDryGain.gain.setTargetAtTime(1.0, now, t);
       }
     }
 
-    // Concert Hall Reverb
+    // Concert Hall Reverb (Convolver acoustic matrix)
     if (this.reverbWetGain && this.reverbDryGain) {
       if (state.concertHall) {
-        this.reverbWetGain.gain.setTargetAtTime(0.42, now, t);
-        this.reverbDryGain.gain.setTargetAtTime(0.82, now, t);
+        let wetAmt = 0.45;
+        if (state.concertHallAmount !== undefined && state.concertHallAmount > 0) {
+          wetAmt = (state.concertHallAmount / 1000) * 0.80;
+        }
+        this.reverbWetGain.gain.setTargetAtTime(wetAmt, now, t);
+        this.reverbDryGain.gain.setTargetAtTime(Math.max(0.25, 1.0 - (wetAmt * 0.35)), now, t);
       } else {
         this.reverbWetGain.gain.setTargetAtTime(0.0, now, t);
         this.reverbDryGain.gain.setTargetAtTime(1.0, now, t);

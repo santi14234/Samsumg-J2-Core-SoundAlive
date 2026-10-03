@@ -25,8 +25,11 @@ export interface SoundAliveState {
   tubeAmpDrive: number; // 0 to 1
   surround3D: boolean;
   surroundLevel: SurroundLevel;
+  surroundAmount?: number; // 0 to 1000
   concertHall: boolean;
   concertHallSize: ReverbSize;
+  concertHallAmount?: number; // 0 to 1000
+  gainDb?: number; // -5 to +12 dB
   bassBoost: boolean;
   bassBoostLevel: number; // 0 to 10
   clarity: boolean;

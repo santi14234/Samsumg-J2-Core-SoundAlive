@@ -78,6 +78,11 @@ export const HardwareStatusCard: React.FC<HardwareStatusCardProps> = ({
           </span>
         </div>
         <div className="flex items-center gap-1.5">
+          {status.isAndroidGoDetected && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 font-medium">
+              Android Go recortado
+            </span>
+          )}
           <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1 border ${
             audioDetected 
               ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 

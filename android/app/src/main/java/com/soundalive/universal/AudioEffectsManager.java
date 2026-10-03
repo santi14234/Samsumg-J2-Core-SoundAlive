@@ -57,6 +57,14 @@ public class AudioEffectsManager {
     private final Map<Short, Short> uiBandLevels = new HashMap<>();
     private Context appContext;
 
+    private boolean isAndroidGoDetected = false;
+    private boolean hasEqualizerHardware = false;
+    private boolean hasBassBoostHardware = false;
+    private boolean hasVirtualizerHardware = false;
+    private boolean hasReverbHardware = false;
+    private boolean hasLoudnessEnhancerHardware = false;
+    private String lastAudioFlingerError = null;
+
     private AudioEffectsManager() {
         for (short i = 0; i < UI_FREQUENCIES_HZ.length; i++) {
             uiBandLevels.put(i, (short) 0);
@@ -132,7 +140,12 @@ public class AudioEffectsManager {
             eq.setEnabled(masterEnabled);
             applyAllBandsToEqualizer(eq);
             equalizers.put(sessionId, eq);
+            hasEqualizerHardware = true;
             Log.d(TAG, "Equalizer OK on session " + sessionId);
+        } catch (UnsupportedOperationException | RuntimeException e) {
+            Log.w(TAG, "Equalizer rejected by AudioFlinger (Status -38 or HAL missing): " + e.getMessage());
+            lastAudioFlingerError = e.getMessage();
+            isAndroidGoDetected = true;
         } catch (Exception e) {
             Log.w(TAG, "Equalizer init error: " + e.getMessage());
         }
@@ -143,7 +156,12 @@ public class AudioEffectsManager {
             bb.setEnabled(masterEnabled && bassBoostStrength > 0);
             if (bb.getStrengthSupported()) bb.setStrength(bassBoostStrength);
             bassBoosts.put(sessionId, bb);
+            hasBassBoostHardware = true;
             Log.d(TAG, "BassBoost OK on session " + sessionId);
+        } catch (UnsupportedOperationException | RuntimeException e) {
+            Log.w(TAG, "BassBoost rejected by AudioFlinger: " + e.getMessage());
+            lastAudioFlingerError = e.getMessage();
+            isAndroidGoDetected = true;
         } catch (Exception e) {
             Log.w(TAG, "BassBoost init error: " + e.getMessage());
         }
@@ -155,7 +173,10 @@ public class AudioEffectsManager {
             le.setTargetGain(totalGain);
             le.setEnabled(masterEnabled && totalGain != 0);
             loudnessEnhancers.put(sessionId, le);
+            hasLoudnessEnhancerHardware = true;
             Log.d(TAG, "LoudnessEnhancer OK on session " + sessionId);
+        } catch (UnsupportedOperationException | RuntimeException e) {
+            Log.w(TAG, "LoudnessEnhancer rejected by AudioFlinger: " + e.getMessage());
         } catch (Exception e) {
             Log.w(TAG, "LoudnessEnhancer init error: " + e.getMessage());
         }
@@ -166,7 +187,12 @@ public class AudioEffectsManager {
             configureEnvironmentalReverb(env, ambienteStrength);
             env.setEnabled(masterEnabled && ambienteStrength > 0);
             envReverbs.put(sessionId, env);
+            hasReverbHardware = true;
             Log.d(TAG, "EnvironmentalReverb OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
+        } catch (UnsupportedOperationException | RuntimeException e) {
+            Log.w(TAG, "EnvironmentalReverb rejected by AudioFlinger (Status -38): " + e.getMessage());
+            lastAudioFlingerError = e.getMessage();
+            isAndroidGoDetected = true;
         } catch (Exception e) {
             Log.w(TAG, "EnvironmentalReverb init error: " + e.getMessage());
         }
@@ -177,7 +203,12 @@ public class AudioEffectsManager {
             rev.setPreset((short) (ambienteStrength > 0 ? PresetReverb.PRESET_LARGEHALL : PresetReverb.PRESET_NONE));
             rev.setEnabled(masterEnabled && ambienteStrength > 0);
             presetReverbs.put(sessionId, rev);
+            hasReverbHardware = true;
             Log.d(TAG, "PresetReverb (LARGEHALL) OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
+        } catch (UnsupportedOperationException | RuntimeException e) {
+            Log.w(TAG, "PresetReverb rejected by AudioFlinger (Status -38): " + e.getMessage());
+            lastAudioFlingerError = e.getMessage();
+            isAndroidGoDetected = true;
         } catch (Exception e) {
             Log.w(TAG, "PresetReverb init error: " + e.getMessage());
         }
@@ -190,7 +221,12 @@ public class AudioEffectsManager {
             }
             virt.setEnabled(masterEnabled && surroundStrength > 0);
             virtualizers.put(sessionId, virt);
+            hasVirtualizerHardware = true;
             Log.d(TAG, "Virtualizer OK on session " + sessionId);
+        } catch (UnsupportedOperationException | RuntimeException e) {
+            Log.w(TAG, "Virtualizer rejected by AudioFlinger (Status -38): " + e.getMessage());
+            lastAudioFlingerError = e.getMessage();
+            isAndroidGoDetected = true;
         } catch (Exception e) {
             Log.w(TAG, "Virtualizer init error: " + e.getMessage());
         }
@@ -514,6 +550,14 @@ public class AudioEffectsManager {
         obj.put("loudnessLive", masterEnabled && loudnessModified);
         obj.put("gainLive", masterEnabled && gainModified);
 
+        obj.put("isAndroidGoDetected", isAndroidGoDetected);
+        obj.put("hasEqualizerHardware", hasEqualizerHardware);
+        obj.put("hasBassBoostHardware", hasBassBoostHardware);
+        obj.put("hasVirtualizerHardware", hasVirtualizerHardware);
+        obj.put("hasReverbHardware", hasReverbHardware);
+        obj.put("hasLoudnessEnhancerHardware", hasLoudnessEnhancerHardware);
+        obj.put("lastAudioFlingerError", lastAudioFlingerError != null ? lastAudioFlingerError : "");
+
         JSArray sessionsArr = new JSArray();
         for (Integer s : activeSessions) {
             sessionsArr.put(s);
@@ -533,11 +577,7 @@ public class AudioEffectsManager {
             Log.w(TAG, "queryEffects error: " + e.getMessage());
         }
         if (enginesArr.length() == 0) {
-            enginesArr.put("SoundAlive Equalizer (Samsung)");
-            enginesArr.put("SoundAlive Bass Boost (Samsung)");
-            enginesArr.put("FxSound LoudnessEnhancer (Preamp/Dynamic)");
-            enginesArr.put("EnvironmentalReverb (Sonido Ambiental)");
-            enginesArr.put("Virtualizer (Sonido Envolvente)");
+            enginesArr.put("Librerías HAL soundfx no presentes (ROM Android Go recortada - Error -38 AudioFlinger)");
         }
         obj.put("hardwareEngines", enginesArr);
 

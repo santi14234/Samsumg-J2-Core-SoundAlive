@@ -11,6 +11,9 @@ import {
 import { SoundAliveDials } from './components/SoundAliveDials';
 import { GraphicEqualizer } from './components/GraphicEqualizer';
 import { HardwareStatusCard } from './components/HardwareStatusCard';
+import { AudioPlayerBar } from './components/AudioPlayerBar';
+import { Track, generateDemoTrackBlob } from './audio/demoAudio';
+import { soundAliveAudioEngine } from './audio/soundAliveEngine';
 import {
   syncNativeMasterEnabled,
   syncNativeBandLevel,
@@ -31,6 +34,7 @@ import {
   Radio,
   Power,
   CheckCircle2,
+  AlertCircle,
   Volume2,
   Sparkles,
   Zap,
@@ -60,6 +64,157 @@ export default function App() {
   const [dynamicBoost, setDynamicBoost] = useState<number>(0);
   const [bassBoost, setBassBoost] = useState<number>(0);
   const [gainDb, setGainDb] = useState<number>(0);
+
+  // Audio Player & DSP Engine Integration
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLooping, setIsLooping] = useState(true);
+
+  // Generate demo tracks on startup for testing SoundAlive 3D & Reverb immediately
+  useEffect(() => {
+    let mounted = true;
+    async function loadTracks() {
+      try {
+        const [synthUrl, acousticUrl, funkUrl] = await Promise.all([
+          generateDemoTrackBlob('synthwave'),
+          generateDemoTrackBlob('acoustic'),
+          generateDemoTrackBlob('funk'),
+        ]);
+
+        const initialTracks: Track[] = [
+          {
+            id: 'synthwave',
+            title: 'Samsung Galaxy Neon Synth (Test 3D)',
+            artist: 'SoundAlive DSP Engine',
+            genre: 'Surround / Bass 3D',
+            durationSec: 14,
+            url: synthUrl,
+          },
+          {
+            id: 'acoustic',
+            title: 'Concert Hall Acoustic Live (Test Reverb)',
+            artist: 'Symphony Hall',
+            genre: 'Ambiente / Sala Conciertos',
+            durationSec: 10,
+            url: acousticUrl,
+          },
+          {
+            id: 'funk',
+            title: 'Groove & Bass Slap (Test EQ & Bass)',
+            artist: 'Exynos Audio Lab',
+            genre: 'Funk / Percusión',
+            durationSec: 12,
+            url: funkUrl,
+          },
+        ];
+
+        if (mounted) {
+          setTracks(initialTracks);
+          setCurrentTrack(initialTracks[0]);
+        }
+      } catch (err) {
+        console.warn('Error creating demo tracks:', err);
+      }
+    }
+
+    loadTracks();
+    return () => { mounted = false; };
+  }, []);
+
+  // Sync currentTrack to <audio> element
+  useEffect(() => {
+    if (audioRef.current && currentTrack?.url) {
+      audioRef.current.src = currentTrack.url;
+      audioRef.current.loop = isLooping;
+      if (isPlaying) {
+        audioRef.current.play().catch(() => setIsPlaying(false));
+      }
+    }
+  }, [currentTrack]);
+
+  // Synchronize ALL UI controls to Web Audio DSP engine in real time
+  useEffect(() => {
+    soundAliveAudioEngine.applyState({
+      enabled,
+      mode,
+      selectedPresetId,
+      bands,
+      bassTreble,
+      instrumentVocal,
+      tubeAmp: false,
+      tubeAmpDrive: 0.5,
+      surround3D: surround > 0,
+      surroundLevel: surround > 600 ? 'high' : surround > 300 ? 'medium' : 'low',
+      surroundAmount: surround,
+      concertHall: ambiente > 0,
+      concertHallSize: ambiente > 600 ? 'cathedral' : ambiente > 300 ? 'auditorium' : 'club',
+      concertHallAmount: ambiente,
+      gainDb,
+      bassBoost: bassBoost > 0,
+      bassBoostLevel: Math.round((bassBoost / 1000) * 10),
+      clarity: clarity > 0,
+      clarityLevel: Math.round((clarity / 1000) * 10),
+      uhqUpscaler: true,
+      adaptSound: 'off',
+      adaptSoundCustomL: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+      adaptSoundCustomR: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+    });
+  }, [enabled, mode, selectedPresetId, bands, bassTreble, instrumentVocal, bassBoost, clarity, ambiente, surround, gainDb]);
+
+  const handleTogglePlay = async () => {
+    if (!audioRef.current || !currentTrack) return;
+    try {
+      await soundAliveAudioEngine.resumeContext();
+      soundAliveAudioEngine.init(audioRef.current);
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        await audioRef.current.play();
+        setIsPlaying(true);
+      }
+    } catch (e) {
+      console.warn('Playback error:', e);
+      setIsPlaying(false);
+    }
+  };
+
+  const handleNextTrack = () => {
+    if (tracks.length === 0 || !currentTrack) return;
+    const currentIndex = tracks.findIndex((t) => t.id === currentTrack.id);
+    const nextIndex = (currentIndex + 1) % tracks.length;
+    setCurrentTrack(tracks[nextIndex]);
+  };
+
+  const handleToggleLoop = () => {
+    setIsLooping((prev) => {
+      const next = !prev;
+      if (audioRef.current) audioRef.current.loop = next;
+      return next;
+    });
+  };
+
+  const handleSelectTrack = (track: Track) => {
+    setCurrentTrack(track);
+  };
+
+  const handleUploadFile = (file: File) => {
+    const objectUrl = URL.createObjectURL(file);
+    const newTrack: Track = {
+      id: `custom-${Date.now()}`,
+      title: file.name.replace(/\.[^/.]+$/, ''),
+      artist: 'Mi Música Local (J2 Core)',
+      genre: 'Archivo Local',
+      durationSec: 0,
+      url: objectUrl,
+      isCustom: true,
+    };
+    setTracks((prev) => [newTrack, ...prev]);
+    setCurrentTrack(newTrack);
+    setIsPlaying(false);
+  };
 
   interface UserProfileSlot {
     id: number;
@@ -404,6 +559,34 @@ export default function App() {
           </span>
         </div>
 
+        {/* Android Go / Hardware Diagnostic Notice (Based on logcat AudioFlinger status: -38) */}
+        <div className="bg-gradient-to-r from-amber-500/10 via-sky-500/10 to-indigo-500/10 border border-amber-500/30 rounded-2xl p-3 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+              <span>Aviso de ROM: Samsung Galaxy J2 Core (Android Go)</span>
+            </div>
+            <span className="text-[9px] px-2 py-0.5 rounded font-mono font-bold bg-amber-950 text-amber-300 border border-amber-800/50">
+              AudioFlinger: status -38
+            </span>
+          </div>
+          <p className="text-[11px] text-neutral-300 leading-snug">
+            Samsung eliminó las librerías binarias nativas (<code className="font-mono text-amber-300">/vendor/lib/soundfx/</code>) en el firmware Android Go para ahorrar memoria, por lo que ninguna app puede aplicar <em>Virtualizer</em> o <em>Ambiente</em> a apps externas (como YouTube) sin Root.
+          </p>
+          <div className="bg-black/60 rounded-xl p-2.5 border border-emerald-500/30 flex items-center justify-between gap-2">
+            <div className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 shrink-0 text-emerald-400 animate-pulse" />
+              <span>¡Solución activa en el Reproductor Integrado!</span>
+            </div>
+            <span className="text-[9px] text-emerald-300 font-mono">
+              DSP 32-bit OK
+            </span>
+          </div>
+          <p className="text-[10px] text-neutral-400 leading-tight">
+            🎧 <strong>Usa el reproductor abajo:</strong> Procesa el <strong>Sonido Envolvente 3D</strong> y la <strong>Sala de Conciertos</strong> directamente por software. Puedes reproducir las pistas de prueba o cargar cualquier canción de tu teléfono con el botón <strong>+ Canción</strong>.
+          </p>
+        </div>
+
         {/* Mode Tabs */}
         <div className="grid grid-cols-2 p-1 rounded-xl bg-neutral-950 border border-neutral-900">
           <button
@@ -616,9 +799,37 @@ export default function App() {
             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
             <span>Frecuencia y Amplitud Nativas OK</span>
           </div>
-          <span className="font-mono">v1.2.27</span>
+          <span className="font-mono">v1.2.28</span>
         </footer>
+
+        {/* Hidden <audio> element connected to SoundAlive Web Audio DSP */}
+        <audio
+          ref={audioRef}
+          onEnded={handleNextTrack}
+          className="hidden"
+          playsInline
+        />
+
+        {/* Bottom spacer so footer isn't hidden by player bar */}
+        {currentTrack && <div className="h-28 w-full" />}
       </div>
+
+      {/* Persistent SoundAlive Audio Player Bar */}
+      {currentTrack && (
+        <AudioPlayerBar
+          currentTrack={currentTrack}
+          tracks={tracks}
+          isPlaying={isPlaying}
+          isLooping={isLooping}
+          soundAliveEnabled={enabled}
+          onTogglePlay={handleTogglePlay}
+          onNextTrack={handleNextTrack}
+          onToggleLoop={handleToggleLoop}
+          onSelectTrack={handleSelectTrack}
+          onUploadFile={handleUploadFile}
+          onToggleSoundAlive={handleToggleMaster}
+        />
+      )}
     </div>
   );
 }

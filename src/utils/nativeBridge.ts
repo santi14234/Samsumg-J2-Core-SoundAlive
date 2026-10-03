@@ -25,6 +25,13 @@ export interface NativeEffectsStatus {
   clarityLive?: boolean;
   loudnessLive?: boolean;
   gainLive?: boolean;
+  isAndroidGoDetected?: boolean;
+  hasEqualizerHardware?: boolean;
+  hasBassBoostHardware?: boolean;
+  hasVirtualizerHardware?: boolean;
+  hasReverbHardware?: boolean;
+  hasLoudnessEnhancerHardware?: boolean;
+  lastAudioFlingerError?: string;
 }
 
 interface SoundAliveSystemPlugin {
