@@ -1,5 +1,22 @@
 import { registerPlugin } from '@capacitor/core';
 
+// Direct Root WebView JavascriptInterface (window.AndroidAudio)
+declare global {
+  interface Window {
+    AndroidAudio?: {
+      isConnected(): boolean;
+      isRootDevice(): boolean;
+      setMasterPower(enabled: boolean): void;
+      updateAtmosphere(progress: number): void;
+      updateClarity(progress: number): void;
+      updateBassBoost(progress: number): void;
+      updateSurround(progress: number): void;
+      updateDynamicBoost(progress: number): void;
+      getStatus(): string;
+    };
+  }
+}
+
 export interface NativeEffectsStatus {
   masterEnabled: boolean;
   equalizerActive: boolean;
@@ -32,6 +49,8 @@ export interface NativeEffectsStatus {
   hasReverbHardware?: boolean;
   hasLoudnessEnhancerHardware?: boolean;
   lastAudioFlingerError?: string;
+  isRootActive?: boolean;
+  bridgeConnected?: boolean;
 }
 
 interface SoundAliveSystemPlugin {
@@ -55,8 +74,14 @@ const SoundAliveSystem = registerPlugin<SoundAliveSystemPlugin>('SoundAliveSyste
 
 export const isNativeAndroidApp = (): boolean => {
   if (typeof window === 'undefined') return false;
+  if ((window as any).AndroidAudio) return true;
   const cap = (window as any).Capacitor;
   return !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
+};
+
+export const hasDirectRootBridge = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return !!(window as any).AndroidAudio;
 };
 
 export const checkWriteSettingsPermission = async (): Promise<boolean> => {
@@ -85,6 +110,13 @@ export const startNativeBackgroundService = async (): Promise<void> => {
 };
 
 export const syncNativeMasterEnabled = async (enabled: boolean): Promise<void> => {
+  if (typeof window !== 'undefined' && window.AndroidAudio) {
+    try {
+      window.AndroidAudio.setMasterPower(enabled);
+    } catch (e) {
+      console.warn('AndroidAudio.setMasterPower error:', e);
+    }
+  }
   if (!isNativeAndroidApp()) return;
   try {
     await SoundAliveSystem.setMasterEnabled({ enabled });
@@ -103,6 +135,13 @@ export const syncNativeSamsungDials = async (bassTreble: number, vocalInstrument
 };
 
 export const syncNativeConcertHall = async (enabled: boolean): Promise<void> => {
+  if (typeof window !== 'undefined' && window.AndroidAudio) {
+    try {
+      window.AndroidAudio.updateAtmosphere(enabled ? 60 : 0);
+    } catch (e) {
+      console.warn('AndroidAudio.updateAtmosphere error:', e);
+    }
+  }
   if (!isNativeAndroidApp()) return;
   try {
     await SoundAliveSystem.setConcertHall({ enabled });
@@ -122,6 +161,15 @@ export const syncNativeGain = async (gainDb: number): Promise<void> => {
 };
 
 export const syncNativeClarity = async (strength: number): Promise<void> => {
+  // strength is 0 - 1000, convert to 0 - 100% for direct bridge
+  const percent = Math.round(strength / 10);
+  if (typeof window !== 'undefined' && window.AndroidAudio) {
+    try {
+      window.AndroidAudio.updateClarity(percent);
+    } catch (e) {
+      console.warn('AndroidAudio.updateClarity error:', e);
+    }
+  }
   if (!isNativeAndroidApp()) return;
   try {
     await SoundAliveSystem.setClarity({ strength });
@@ -131,6 +179,15 @@ export const syncNativeClarity = async (strength: number): Promise<void> => {
 };
 
 export const syncNativeAmbiente = async (strength: number): Promise<void> => {
+  // strength is 0 - 1000, convert to 0 - 100% for direct bridge
+  const percent = Math.round(strength / 10);
+  if (typeof window !== 'undefined' && window.AndroidAudio) {
+    try {
+      window.AndroidAudio.updateAtmosphere(percent);
+    } catch (e) {
+      console.warn('AndroidAudio.updateAtmosphere error:', e);
+    }
+  }
   if (!isNativeAndroidApp()) return;
   try {
     await SoundAliveSystem.setAmbiente({ strength });
@@ -140,6 +197,14 @@ export const syncNativeAmbiente = async (strength: number): Promise<void> => {
 };
 
 export const syncNativeSurround = async (strength: number): Promise<void> => {
+  const percent = Math.round(strength / 10);
+  if (typeof window !== 'undefined' && window.AndroidAudio) {
+    try {
+      window.AndroidAudio.updateSurround(percent);
+    } catch (e) {
+      console.warn('AndroidAudio.updateSurround error:', e);
+    }
+  }
   if (!isNativeAndroidApp()) return;
   try {
     await SoundAliveSystem.setSurround({ strength });
@@ -149,6 +214,14 @@ export const syncNativeSurround = async (strength: number): Promise<void> => {
 };
 
 export const syncNativeDynamicBoost = async (strength: number): Promise<void> => {
+  const percent = Math.round(strength / 10);
+  if (typeof window !== 'undefined' && window.AndroidAudio) {
+    try {
+      window.AndroidAudio.updateDynamicBoost(percent);
+    } catch (e) {
+      console.warn('AndroidAudio.updateDynamicBoost error:', e);
+    }
+  }
   if (!isNativeAndroidApp()) return;
   try {
     await SoundAliveSystem.setDynamicBoost({ strength });
@@ -158,6 +231,14 @@ export const syncNativeDynamicBoost = async (strength: number): Promise<void> =>
 };
 
 export const syncNativeBassBoost = async (strength: number): Promise<void> => {
+  const percent = Math.round(strength / 10);
+  if (typeof window !== 'undefined' && window.AndroidAudio) {
+    try {
+      window.AndroidAudio.updateBassBoost(percent);
+    } catch (e) {
+      console.warn('AndroidAudio.updateBassBoost error:', e);
+    }
+  }
   if (!isNativeAndroidApp()) return;
   try {
     await SoundAliveSystem.setBassBoost({ strength });
@@ -171,7 +252,6 @@ export const syncNativeAmbientSound = syncNativeConcertHall;
 export const syncNativeBandLevel = async (band: number, dbGain: number): Promise<void> => {
   if (!isNativeAndroidApp()) return;
   try {
-    // Convert dB (-10 to +10 dB) to millibels (-1000 to +1000 mB)
     const level = Math.round(dbGain * 100);
     await SoundAliveSystem.setBandLevel({ band, level });
   } catch (err) {
@@ -180,6 +260,50 @@ export const syncNativeBandLevel = async (band: number, dbGain: number): Promise
 };
 
 export const getNativeEffectsStatus = async (): Promise<NativeEffectsStatus | null> => {
+  // If direct Root JavascriptInterface is present, pull instant status
+  if (typeof window !== 'undefined' && window.AndroidAudio) {
+    try {
+      const raw = window.AndroidAudio.getStatus();
+      const parsed = JSON.parse(raw);
+      return {
+        masterEnabled: parsed.masterEnabled !== false,
+        equalizerActive: !!parsed.equalizerActive,
+        equalizerBands: 9,
+        bassBoostSupported: true,
+        bassBoostActive: !!parsed.bassBoostActive,
+        bassBoostStrength: 500,
+        concertHallEnabled: !!parsed.reverbActive,
+        concertHallActive: !!parsed.reverbActive,
+        presetReverbSupported: true,
+        envReverbSupported: true,
+        roomAcousticSupported: true,
+        concertHallEngine: 'EnvironmentalReverb (Root Session 0)',
+        sessionsCount: 1,
+        activeSessions: [0],
+        hardwareEngines: ['Root Global AudioFX (Session 0)'],
+        isAudioOutputActive: true,
+        audioModifiedInSystem: true,
+        eqLive: !!parsed.masterEnabled,
+        bassBoostLive: !!parsed.masterEnabled,
+        reverbLive: !!parsed.masterEnabled,
+        virtualizerLive: !!parsed.masterEnabled,
+        clarityLive: !!parsed.masterEnabled,
+        loudnessLive: !!parsed.masterEnabled,
+        gainLive: !!parsed.masterEnabled,
+        isAndroidGoDetected: false,
+        hasEqualizerHardware: true,
+        hasBassBoostHardware: true,
+        hasVirtualizerHardware: true,
+        hasReverbHardware: true,
+        hasLoudnessEnhancerHardware: true,
+        isRootActive: !!parsed.isRootActive,
+        bridgeConnected: true,
+      };
+    } catch (e) {
+      console.warn('Direct bridge getStatus error:', e);
+    }
+  }
+
   if (!isNativeAndroidApp()) return null;
   try {
     return await SoundAliveSystem.getEffectsStatus();

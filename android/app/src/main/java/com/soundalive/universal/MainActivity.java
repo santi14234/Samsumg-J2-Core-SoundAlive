@@ -15,6 +15,17 @@ public class MainActivity extends BridgeActivity {
 
         AudioEffectsManager.getInstance().init(this);
 
+        // Inject Direct JavascriptInterface Bridge for zero-latency Root audio control
+        try {
+            android.webkit.WebView webView = getBridge().getWebView();
+            if (webView != null) {
+                webView.getSettings().setJavaScriptEnabled(true);
+                webView.addJavascriptInterface(new WebAppInterface(this), "AndroidAudio");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         // Check if opened from an external music player with a specific audio session
         handleIntent(getIntent());
 
