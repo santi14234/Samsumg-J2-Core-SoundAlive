@@ -248,6 +248,30 @@ export default function App() {
     }
   };
 
+  // Al mover el slider de "Atmósfera de Sala" (Reverb)
+  const onAtmosphereSliderChange = (valor: number) => {
+    setAmbiente(valor * 10);
+    setSelectedPresetId('custom');
+    if (typeof window !== 'undefined' && window.AndroidAudio) {
+      window.AndroidAudio.updateAtmosphere(valor);
+    }
+    if (enabled) {
+      syncNativeAmbiente(valor * 10);
+    }
+  };
+
+  // Al mover el slider de "Sonido Envolvente 3D" (Surround)
+  const onSurroundSliderChange = (valor: number) => {
+    setSurround(valor * 10);
+    setSelectedPresetId('custom');
+    if (typeof window !== 'undefined' && window.AndroidAudio) {
+      window.AndroidAudio.updateSurround(valor);
+    }
+    if (enabled) {
+      syncNativeSurround(valor * 10);
+    }
+  };
+
   // Reset bands to 0 dB
   const handleResetBands = () => {
     const zeros = [0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -497,15 +521,10 @@ export default function App() {
               <input
                 type="range"
                 min="0"
-                max="1000"
-                step="10"
-                value={surround}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value);
-                  setSurround(val);
-                  setSelectedPresetId('custom');
-                  if (enabled) syncNativeSurround(val);
-                }}
+                max="100"
+                step="1"
+                value={Math.round(surround / 10)}
+                onChange={(e) => onSurroundSliderChange(parseInt(e.target.value))}
                 className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
               />
             </div>
@@ -523,15 +542,10 @@ export default function App() {
               <input
                 type="range"
                 min="0"
-                max="1000"
-                step="10"
-                value={ambiente}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value);
-                  setAmbiente(val);
-                  setSelectedPresetId('custom');
-                  if (enabled) syncNativeAmbiente(val);
-                }}
+                max="100"
+                step="1"
+                value={Math.round(ambiente / 10)}
+                onChange={(e) => onAtmosphereSliderChange(parseInt(e.target.value))}
                 className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
               />
             </div>

@@ -45,10 +45,13 @@ jobs:
       - name: Compilar APK con Gradle
         run: |
           cd android
-          ./gradlew assembleDebug --no-daemon --stacktrace --info
+          ./gradlew assembleRelease --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon --stacktrace
           cd ..
           mkdir -p output_apk
-          find android/app/build/outputs/apk/debug -name "*.apk" -exec cp {} output_apk/SoundAlive-Lite.apk \;
+          find android/app/build/outputs/apk -name "*.apk" -not -name "*unsigned*" -exec cp {} output_apk/SoundAlive-Lite.apk \;
+          if [ ! -f output_apk/SoundAlive-Lite.apk ]; then
+            find android/app/build/outputs/apk -name "*.apk" -exec cp {} output_apk/SoundAlive-Lite.apk \;
+          fi
 
       - name: Subir APK SoundAlive Lite
         uses: actions/upload-artifact@v4

@@ -55,9 +55,9 @@ public class WebAppInterface {
 
     private synchronized void initGlobalEffects() {
         try {
-            // Environmental Reverb on global session 0
+            // Inicializar Reverb Ambiental Global (Prioridad 0, Sesión 0)
             if (mReverb == null) {
-                mReverb = new EnvironmentalReverb(1000, 0);
+                mReverb = new EnvironmentalReverb(0, 0);
                 mReverb.setEnabled(mMasterEnabled);
             }
         } catch (Exception e) {
@@ -66,7 +66,7 @@ public class WebAppInterface {
 
         try {
             if (mPresetReverb == null) {
-                mPresetReverb = new PresetReverb(1000, 0);
+                mPresetReverb = new PresetReverb(0, 0);
                 mPresetReverb.setEnabled(mMasterEnabled);
             }
         } catch (Exception e) {
@@ -75,7 +75,7 @@ public class WebAppInterface {
 
         try {
             if (mBassBoost == null) {
-                mBassBoost = new BassBoost(1000, 0);
+                mBassBoost = new BassBoost(0, 0);
                 mBassBoost.setEnabled(mMasterEnabled);
             }
         } catch (Exception e) {
@@ -84,7 +84,7 @@ public class WebAppInterface {
 
         try {
             if (mEqualizer == null) {
-                mEqualizer = new Equalizer(1000, 0);
+                mEqualizer = new Equalizer(0, 0);
                 mEqualizer.setEnabled(mMasterEnabled);
             }
         } catch (Exception e) {
@@ -92,8 +92,9 @@ public class WebAppInterface {
         }
 
         try {
+            // Inicializar Virtualizador 3D Global (Prioridad 0, Sesión 0)
             if (mVirtualizer == null) {
-                mVirtualizer = new Virtualizer(1000, 0);
+                mVirtualizer = new Virtualizer(0, 0);
                 mVirtualizer.setEnabled(mMasterEnabled);
             }
         } catch (Exception e) {
@@ -139,22 +140,28 @@ public class WebAppInterface {
         AudioEffectsManager.getInstance().setMasterEnabled(enabled);
     }
 
+    // Puente para la barra de "Atmósfera de Sala" (Reverb)
     @JavascriptInterface
     public void updateAtmosphere(int progress) {
         Log.d(TAG, "updateAtmosphere called: " + progress + "%");
         try {
             if (mReverb == null) {
-                mReverb = new EnvironmentalReverb(1000, 0);
+                mReverb = new EnvironmentalReverb(0, 0);
             }
             if (mReverb != null) {
-                // Map range 0-100% to Android milibels (-9000 to 0 mB)
+                if (mMasterEnabled && !mReverb.getEnabled()) {
+                    mReverb.setEnabled(true);
+                }
+                // Mapear rango de 0-100% a milibelios de Android (-9000 a 0 mB)
                 short roomLevel = (short) ((progress * 90) - 9000);
                 mReverb.setRoomLevel(roomLevel);
                 mReverb.setRoomHFLevel((short) -500);
                 mReverb.setReflectionsLevel((short) ((progress * 10) - 1500));
                 mReverb.setReverbLevel((short) ((progress * 10) - 1000));
                 mReverb.setDecayTime(1000 + (progress * 25));
-                mReverb.setEnabled(mMasterEnabled && progress > 0);
+                if (progress == 0) {
+                    mReverb.setEnabled(false);
+                }
             }
             if (mPresetReverb != null) {
                 mPresetReverb.setPreset((short) (progress > 0 ? PresetReverb.PRESET_LARGEHALL : PresetReverb.PRESET_NONE));
@@ -213,19 +220,26 @@ public class WebAppInterface {
         AudioEffectsManager.getInstance().setBassBoostStrength((short) (progress * 10));
     }
 
+    // Puente para la barra de "Sonido Envolvente 3D" (Virtualizer)
     @JavascriptInterface
     public void updateSurround(int progress) {
         Log.d(TAG, "updateSurround called: " + progress + "%");
         try {
             if (mVirtualizer == null) {
-                mVirtualizer = new Virtualizer(1000, 0);
+                mVirtualizer = new Virtualizer(0, 0);
             }
             if (mVirtualizer != null) {
-                short strength = (short) (progress * 10); // 0 - 1000
+                if (mMasterEnabled && !mVirtualizer.getEnabled()) {
+                    mVirtualizer.setEnabled(true);
+                }
                 if (mVirtualizer.getStrengthSupported()) {
+                    // El virtualizador de Android maneja fuerza de 0 a 1000
+                    short strength = (short) (progress * 10);
                     mVirtualizer.setStrength(strength);
                 }
-                mVirtualizer.setEnabled(mMasterEnabled && progress > 0);
+                if (progress == 0) {
+                    mVirtualizer.setEnabled(false);
+                }
             }
         } catch (Exception e) {
             Log.w(TAG, "updateSurround error: " + e.getMessage());
