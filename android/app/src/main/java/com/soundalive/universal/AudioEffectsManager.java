@@ -146,8 +146,8 @@ public class AudioEffectsManager {
             Log.w(TAG, "Equalizer rejected by AudioFlinger (Status -38 or HAL missing): " + e.getMessage());
             lastAudioFlingerError = e.getMessage();
             isAndroidGoDetected = true;
-        } catch (Exception e) {
-            Log.w(TAG, "Equalizer init error: " + e.getMessage());
+        } catch (Throwable t) {
+            Log.w(TAG, "Equalizer init error: " + t.getMessage());
         }
 
         // 2. BassBoost
@@ -162,8 +162,8 @@ public class AudioEffectsManager {
             Log.w(TAG, "BassBoost rejected by AudioFlinger: " + e.getMessage());
             lastAudioFlingerError = e.getMessage();
             isAndroidGoDetected = true;
-        } catch (Exception e) {
-            Log.w(TAG, "BassBoost init error: " + e.getMessage());
+        } catch (Throwable t) {
+            Log.w(TAG, "BassBoost init error: " + t.getMessage());
         }
 
         // 3. LoudnessEnhancer (Gain + Dynamic Boost)
@@ -177,8 +177,8 @@ public class AudioEffectsManager {
             Log.d(TAG, "LoudnessEnhancer OK on session " + sessionId);
         } catch (RuntimeException e) {
             Log.w(TAG, "LoudnessEnhancer rejected by AudioFlinger: " + e.getMessage());
-        } catch (Exception e) {
-            Log.w(TAG, "LoudnessEnhancer init error: " + e.getMessage());
+        } catch (Throwable t) {
+            Log.w(TAG, "LoudnessEnhancer init error: " + t.getMessage());
         }
 
         // 4. EnvironmentalReverb (Ambiente)
@@ -193,8 +193,8 @@ public class AudioEffectsManager {
             Log.w(TAG, "EnvironmentalReverb rejected by AudioFlinger (Status -38): " + e.getMessage());
             lastAudioFlingerError = e.getMessage();
             isAndroidGoDetected = true;
-        } catch (Exception e) {
-            Log.w(TAG, "EnvironmentalReverb init error: " + e.getMessage());
+        } catch (Throwable t) {
+            Log.w(TAG, "EnvironmentalReverb init error: " + t.getMessage());
         }
 
         // 5. PresetReverb (Using PRESET_LARGEHALL for real Samsung SoundAlive Concert Hall feeling)
@@ -209,8 +209,8 @@ public class AudioEffectsManager {
             Log.w(TAG, "PresetReverb rejected by AudioFlinger (Status -38): " + e.getMessage());
             lastAudioFlingerError = e.getMessage();
             isAndroidGoDetected = true;
-        } catch (Exception e) {
-            Log.w(TAG, "PresetReverb init error: " + e.getMessage());
+        } catch (Throwable t) {
+            Log.w(TAG, "PresetReverb init error: " + t.getMessage());
         }
 
         // 6. Virtualizer (Sonido Envolvente)
@@ -227,8 +227,8 @@ public class AudioEffectsManager {
             Log.w(TAG, "Virtualizer rejected by AudioFlinger (Status -38): " + e.getMessage());
             lastAudioFlingerError = e.getMessage();
             isAndroidGoDetected = true;
-        } catch (Exception e) {
-            Log.w(TAG, "Virtualizer init error: " + e.getMessage());
+        } catch (Throwable t) {
+            Log.w(TAG, "Virtualizer init error: " + t.getMessage());
         }
     }
 
