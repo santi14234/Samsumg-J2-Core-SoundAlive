@@ -622,4 +622,33 @@ public class AudioEffectsManager {
             }
         } catch (Exception ignored) {}
     }
+
+    public synchronized void release() {
+        for (int sessionId : new HashSet<>(activeSessions)) {
+            Equalizer eq = equalizers.remove(sessionId);
+            if (eq != null) { try { eq.setEnabled(false); eq.release(); } catch (Exception ignored) {} }
+
+            BassBoost bb = bassBoosts.remove(sessionId);
+            if (bb != null) { try { bb.setEnabled(false); bb.release(); } catch (Exception ignored) {} }
+
+            LoudnessEnhancer le = loudnessEnhancers.remove(sessionId);
+            if (le != null) { try { le.setEnabled(false); le.release(); } catch (Exception ignored) {} }
+
+            EnvironmentalReverb env = envReverbs.remove(sessionId);
+            if (env != null) { try { env.setEnabled(false); env.release(); } catch (Exception ignored) {} }
+
+            PresetReverb r = presetReverbs.remove(sessionId);
+            if (r != null) { try { r.setEnabled(false); r.release(); } catch (Exception ignored) {} }
+
+            Virtualizer v = virtualizers.remove(sessionId);
+            if (v != null) { try { v.setEnabled(false); v.release(); } catch (Exception ignored) {} }
+        }
+        activeSessions.clear();
+        equalizers.clear();
+        bassBoosts.clear();
+        loudnessEnhancers.clear();
+        envReverbs.clear();
+        presetReverbs.clear();
+        virtualizers.clear();
+    }
 }

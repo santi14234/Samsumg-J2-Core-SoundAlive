@@ -103,11 +103,7 @@ export const openWriteSettingsScreen = async (): Promise<void> => {
 };
 
 export const startNativeBackgroundService = async (): Promise<void> => {
-  try {
-    await SoundAliveSystem.startBackgroundService();
-  } catch (err) {
-    console.warn('Cannot start background service:', err);
-  }
+  // Purely ephemeral active-only processing
 };
 
 export const syncNativeMasterEnabled = async (enabled: boolean): Promise<void> => {

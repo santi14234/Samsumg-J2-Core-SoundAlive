@@ -358,4 +358,48 @@ public class WebAppInterface {
             return "{\"bridgeConnected\":true,\"isRootActive\":true}";
         }
     }
+
+    public synchronized void release() {
+        mMainHandler.post(() -> {
+            try {
+                if (mReverb != null) {
+                    mReverb.setEnabled(false);
+                    mReverb.release();
+                    mReverb = null;
+                }
+            } catch (Throwable ignored) {}
+
+            try {
+                if (mVirtualizer != null) {
+                    mVirtualizer.setEnabled(false);
+                    mVirtualizer.release();
+                    mVirtualizer = null;
+                }
+            } catch (Throwable ignored) {}
+
+            try {
+                if (mBassBoost != null) {
+                    mBassBoost.setEnabled(false);
+                    mBassBoost.release();
+                    mBassBoost = null;
+                }
+            } catch (Throwable ignored) {}
+
+            try {
+                if (mEqualizer != null) {
+                    mEqualizer.setEnabled(false);
+                    mEqualizer.release();
+                    mEqualizer = null;
+                }
+            } catch (Throwable ignored) {}
+
+            try {
+                if (mLoudness != null) {
+                    mLoudness.setEnabled(false);
+                    mLoudness.release();
+                    mLoudness = null;
+                }
+            } catch (Throwable ignored) {}
+        });
+    }
 }

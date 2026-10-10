@@ -182,12 +182,6 @@ export default function App() {
     bridgeConnected: true,
   });
 
-  // Start background service on mount
-  useEffect(() => {
-    if (isNativeAndroidApp()) {
-      startNativeBackgroundService();
-    }
-  }, []);
 
   // Update native effects immediately when power toggle changes
   const handleTogglePower = useCallback(() => {

@@ -4,10 +4,13 @@ import android.content.Intent;
 import android.media.audiofx.AudioEffect;
 import android.os.Build;
 import android.os.Bundle;
-import androidx.core.content.ContextCompat;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    private WebAppInterface mWebAppInterface;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(SoundAlivePlugin.class);
@@ -17,9 +20,9 @@ public class MainActivity extends BridgeActivity {
 
         // Configure WebView for reliable local asset loading (fixes black screen on Galaxy J2 Core)
         try {
-            android.webkit.WebView webView = getBridge().getWebView();
+            WebView webView = getBridge().getWebView();
             if (webView != null) {
-                android.webkit.WebSettings settings = webView.getSettings();
+                WebSettings settings = webView.getSettings();
                 settings.setJavaScriptEnabled(true);
                 settings.setAllowFileAccess(true);
                 settings.setAllowContentAccess(true);
@@ -28,11 +31,17 @@ public class MainActivity extends BridgeActivity {
                 settings.setAllowFileAccessFromFileURLs(true);
                 settings.setAllowUniversalAccessFromFileURLs(true);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+                    settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
                 }
 
+                // Optimización de Arranque Instantáneo para Android Go (1GB RAM)
+                settings.setRenderPriority(WebSettings.RenderPriority.HIGH);
+                settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+                webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
+
                 // Inject Direct JavascriptInterface Bridge for zero-latency Root audio control
-                webView.addJavascriptInterface(new WebAppInterface(this), "AndroidAudio");
+                mWebAppInterface = new WebAppInterface(this);
+                webView.addJavascriptInterface(mWebAppInterface, "AndroidAudio");
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -40,17 +49,6 @@ public class MainActivity extends BridgeActivity {
 
         // Check if opened from an external music player with a specific audio session
         handleIntent(getIntent());
-
-        try {
-            Intent serviceIntent = new Intent(this, SoundAliveService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                ContextCompat.startForegroundService(this, serviceIntent);
-            } else {
-                startService(serviceIntent);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     @Override
@@ -64,6 +62,27 @@ public class MainActivity extends BridgeActivity {
         int sessionId = intent.getIntExtra(AudioEffect.EXTRA_AUDIO_SESSION, AudioEffect.ERROR_BAD_VALUE);
         if (sessionId != AudioEffect.ERROR_BAD_VALUE) {
             AudioEffectsManager.getInstance().attachSession(sessionId);
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        // 1. Liberación absoluta de todos los efectos nativos al cerrar la app
+        try {
+            if (mWebAppInterface != null) {
+                mWebAppInterface.release();
+                mWebAppInterface = null;
+            }
+            AudioEffectsManager.getInstance().release();
+        } catch (Throwable ignored) {}
+
+        super.onDestroy();
+
+        // 2. Matar el proceso y liberar toda la memoria RAM de inmediato
+        try {
+            android.os.Process.killProcess(android.os.Process.myPid());
+        } catch (Throwable ignored) {
+            System.exit(0);
         }
     }
 }

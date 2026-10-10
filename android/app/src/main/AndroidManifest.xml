@@ -2,20 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Mandatory permissions for global audio DSP engine & Root control -->
+    <!-- Permissions for Audio & System Settings -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
-    <!-- Permissions for automatic boot startup and Wakelock to prevent freeze -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.QUICKBOOT_POWERON" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
@@ -27,14 +18,13 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
-        <!-- Main Visual Activity (Interface inspired by FxSound Pro & Samsung SoundAlive) -->
+        <!-- Main Visual Activity (Strictly active lifecycle) -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
             android:label="SoundAlive Lite"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
-            android:excludeFromRecents="true"
             android:exported="true">
 
             <intent-filter>
@@ -42,7 +32,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Registers SoundAlive as the system audio equalizer for all music players -->
+            <!-- Registers SoundAlive as the system audio equalizer for music players -->
             <intent-filter>
                 <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -60,34 +50,6 @@
                 <action android:name="android.media.action.CLOSE_AUDIO_EFFECT_CONTROL_SESSION" />
                 <action android:name="android.media.action.OPEN_AUDIO_EFFECT_CONTROL_PANEL" />
                 <action android:name="android.media.action.CLOSE_AUDIO_EFFECT_CONTROL_PANEL" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </receiver>
-
-        <!-- INVISIBLE BACKGROUND AUDIO DSP SERVICES (:audio_process isolates memory from Android Go) -->
-        <service
-            android:name=".SoundAliveService"
-            android:enabled="true"
-            android:exported="false"
-            android:process=":audio_process"
-            android:foregroundServiceType="mediaPlayback" />
-
-        <service
-            android:name=".AudioService"
-            android:enabled="true"
-            android:exported="false"
-            android:process=":audio_process"
-            android:foregroundServiceType="mediaPlayback" />
-
-        <!-- Automatic Start on Boot Receiver -->
-        <receiver
-            android:name=".BootReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>

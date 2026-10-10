@@ -13,6 +13,9 @@ export default defineConfig(() => {
     },
     build: {
       target: 'es2015',
+      minify: 'esbuild' as const,
+      cssMinify: true,
+      sourcemap: false,
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
