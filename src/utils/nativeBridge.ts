@@ -176,11 +176,11 @@ export const syncNativeClarity = async (strength: number): Promise<void> => {
 };
 
 export const syncNativeAmbiente = async (strength: number): Promise<void> => {
-  // strength is 0 - 1000, convert to 0 - 100% for direct bridge
-  const percent = Math.round(strength / 10);
+  // strength is 0 - 1000, convert to 0 - 10 FxSound scale for direct bridge
+  const val10 = Math.round(strength / 100);
   if (typeof window !== 'undefined' && window.AndroidAudio) {
     try {
-      window.AndroidAudio.updateAtmosphere(percent);
+      window.AndroidAudio.updateAtmosphere(val10);
     } catch (e) {
       console.warn('AndroidAudio.updateAtmosphere error:', e);
     }
@@ -194,10 +194,11 @@ export const syncNativeAmbiente = async (strength: number): Promise<void> => {
 };
 
 export const syncNativeSurround = async (strength: number): Promise<void> => {
-  const percent = Math.round(strength / 10);
+  // strength is 0 - 1000, convert to 0 - 10 FxSound scale for direct bridge
+  const val10 = Math.round(strength / 100);
   if (typeof window !== 'undefined' && window.AndroidAudio) {
     try {
-      window.AndroidAudio.updateSurround(percent);
+      window.AndroidAudio.updateSurround(val10);
     } catch (e) {
       console.warn('AndroidAudio.updateSurround error:', e);
     }

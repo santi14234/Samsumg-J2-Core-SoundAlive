@@ -168,11 +168,10 @@ public class WebAppInterface {
         AudioEffectsManager.getInstance().setMasterEnabled(enabled);
     }
 
-    // Puente para la barra de "Atmósfera de Sala" (Reverb)
+    // 1. CORRECCIÓN PARA AMBIENTE (EnvironmentalReverb): Escala 0-10 a -9000 mB .. 0 mB
     @JavascriptInterface
     public void updateAtmosphere(int progress) {
         mMainHandler.post(() -> {
-            // Validar que la instancia nativa no esté muerta antes de inyectar comandos
             if (mReverb == null && progress > 0) {
                 try {
                     mReverb = new EnvironmentalReverb(0, 0);
@@ -182,32 +181,35 @@ public class WebAppInterface {
             }
             if (mReverb != null) {
                 try {
-                    if (mMasterEnabled && !mReverb.getEnabled()) {
-                        mReverb.setEnabled(true);
-                    }
-                    // Mapeo de 0-100% a milibelios de Android (-9000 a 0 mB)
-                    short roomLevel = (short) ((progress * 90) - 9000);
-                    mReverb.setRoomLevel(roomLevel);
-                    mReverb.setRoomHFLevel((short) -500);
-                    mReverb.setReflectionsLevel((short) ((progress * 10) - 1500));
-                    mReverb.setReverbLevel((short) ((progress * 10) - 1000));
-                    mReverb.setDecayTime(1000 + (progress * 25));
+                    // Si es 0, apagamos el efecto. Si sube, calculamos el decibelaje negativo correcto.
                     if (progress == 0) {
+                        mReverb.setRoomLevel((short) -9000);
                         mReverb.setEnabled(false);
+                    } else {
+                        if (mMasterEnabled && !mReverb.getEnabled()) {
+                            mReverb.setEnabled(true);
+                        }
+                        // Escala: 1 = -4000mB (suave) hasta 10 = 0mB (máxima reverberación de FxSound)
+                        float val10 = progress > 10 ? (progress / 10.0f) : (float) progress;
+                        short roomLevel = (short) (-4500 + (val10 * 450));
+                        if (roomLevel > 0) roomLevel = 0;
+                        if (roomLevel < -9000) roomLevel = -9000;
+                        mReverb.setRoomLevel(roomLevel);
                     }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 } catch (Throwable t) {
-                    Log.w(TAG, "updateAtmosphere native error: " + t.getMessage());
+                    t.printStackTrace();
                 }
             }
         });
-        AudioEffectsManager.getInstance().setAmbiente(progress * 10);
+        AudioEffectsManager.getInstance().setAmbiente(progress <= 10 ? progress * 100 : progress * 10);
     }
 
-    // Puente para la barra de "Sonido Envolvente 3D" (Virtualizer)
+    // 2. CORRECCIÓN PARA SONIDO ENVOLVENTE (Virtualizer): Escala 0-10 a 0 .. 1000 fuerza
     @JavascriptInterface
     public void updateSurround(int progress) {
         mMainHandler.post(() -> {
-            // Validar que la instancia nativa no esté muerta antes de inyectar comandos
             if (mVirtualizer == null && progress > 0) {
                 try {
                     mVirtualizer = new Virtualizer(0, 0);
@@ -215,25 +217,32 @@ public class WebAppInterface {
                     mVirtualizer = null;
                 }
             }
-            if (mVirtualizer != null) {
+            if (mVirtualizer != null && mVirtualizer.getStrengthSupported()) {
                 try {
-                    if (mMasterEnabled && !mVirtualizer.getEnabled()) {
-                        mVirtualizer.setEnabled(true);
-                    }
-                    if (mVirtualizer.getStrengthSupported()) {
-                        // El virtualizador de Android maneja fuerza de 0 a 1000
-                        short strength = (short) (progress * 10);
+                    if (progress == 0) {
+                        mVirtualizer.setStrength((short) 0);
+                        mVirtualizer.setEnabled(false);
+                    } else {
+                        if (mMasterEnabled && !mVirtualizer.getEnabled()) {
+                            mVirtualizer.setEnabled(true);
+                        }
+                        // Multiplicamos por 100 para que nuestra escala de 0-10 se convierta en el rango 0-1000 del hardware
+                        short strength;
+                        if (progress <= 10) {
+                            strength = (short) (progress * 100);
+                        } else {
+                            strength = (short) Math.min(1000, progress * 10);
+                        }
                         mVirtualizer.setStrength(strength);
                     }
-                    if (progress == 0) {
-                        mVirtualizer.setEnabled(false);
-                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 } catch (Throwable t) {
-                    Log.w(TAG, "updateSurround error: " + t.getMessage());
+                    t.printStackTrace();
                 }
             }
         });
-        AudioEffectsManager.getInstance().setSurround(progress * 10);
+        AudioEffectsManager.getInstance().setSurround(progress <= 10 ? progress * 100 : progress * 10);
     }
 
     @JavascriptInterface

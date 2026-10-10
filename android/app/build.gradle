@@ -7,8 +7,8 @@ android {
         applicationId "com.soundalive.universal"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 42
-        versionName "1.2.39"
+        versionCode 43
+        versionName "1.2.40"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Exclude zips and unwanted files from APK packaging to ensure minimal APK size (<5MB)

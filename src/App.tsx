@@ -242,27 +242,27 @@ export default function App() {
     }
   };
 
-  // Al mover el slider de "Atmósfera de Sala" (Reverb)
+  // Al mover el slider de "Atmósfera de Sala" (Reverb) - Escala 0 a 10 de FxSound
   const onAtmosphereSliderChange = (valor: number) => {
-    setAmbiente(valor * 10);
+    setAmbiente(valor * 100);
     setSelectedPresetId('custom');
     if (typeof window !== 'undefined' && window.AndroidAudio) {
       window.AndroidAudio.updateAtmosphere(valor);
     }
     if (enabled) {
-      syncNativeAmbiente(valor * 10);
+      syncNativeAmbiente(valor * 100);
     }
   };
 
-  // Al mover el slider de "Sonido Envolvente 3D" (Surround)
+  // Al mover el slider de "Sonido Envolvente 3D" (Surround) - Escala 0 a 10 de FxSound
   const onSurroundSliderChange = (valor: number) => {
-    setSurround(valor * 10);
+    setSurround(valor * 100);
     setSelectedPresetId('custom');
     if (typeof window !== 'undefined' && window.AndroidAudio) {
       window.AndroidAudio.updateSurround(valor);
     }
     if (enabled) {
-      syncNativeSurround(valor * 10);
+      syncNativeSurround(valor * 100);
     }
   };
 
@@ -457,20 +457,20 @@ export default function App() {
                   <Sun className="w-3.5 h-3.5 text-amber-400" /> Claridad Vocal
                 </span>
                 <span className="text-emerald-400 font-bold font-mono">
-                  {Math.round(clarity / 10)}%
+                  {Math.round(clarity / 100)}
                 </span>
               </div>
               <input
                 type="range"
                 min="0"
-                max="1000"
-                step="10"
-                value={clarity}
+                max="10"
+                step="1"
+                value={Math.round(clarity / 100)}
                 onChange={(e) => {
                   const val = parseInt(e.target.value);
-                  setClarity(val);
+                  setClarity(val * 100);
                   setSelectedPresetId('custom');
-                  if (enabled) syncNativeClarity(val);
+                  if (enabled) syncNativeClarity(val * 100);
                 }}
                 className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
               />
@@ -483,20 +483,20 @@ export default function App() {
                   <Volume2 className="w-3.5 h-3.5 text-blue-400" /> Refuerzo de Graves
                 </span>
                 <span className="text-emerald-400 font-bold font-mono">
-                  {Math.round(bassBoost / 10)}%
+                  {Math.round(bassBoost / 100)}
                 </span>
               </div>
               <input
                 type="range"
                 min="0"
-                max="1000"
-                step="10"
-                value={bassBoost}
+                max="10"
+                step="1"
+                value={Math.round(bassBoost / 100)}
                 onChange={(e) => {
                   const val = parseInt(e.target.value);
-                  setBassBoost(val);
+                  setBassBoost(val * 100);
                   setSelectedPresetId('custom');
-                  if (enabled) syncNativeBassBoost(val);
+                  if (enabled) syncNativeBassBoost(val * 100);
                 }}
                 className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
               />
@@ -509,15 +509,15 @@ export default function App() {
                   <Globe className="w-3.5 h-3.5 text-purple-400" /> Sonido Envolvente 3D
                 </span>
                 <span className="text-emerald-400 font-bold font-mono">
-                  {Math.round(surround / 10)}%
+                  {Math.round(surround / 100)}
                 </span>
               </div>
               <input
                 type="range"
                 min="0"
-                max="100"
+                max="10"
                 step="1"
-                value={Math.round(surround / 10)}
+                value={Math.round(surround / 100)}
                 onChange={(e) => onSurroundSliderChange(parseInt(e.target.value))}
                 className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
               />
@@ -530,15 +530,15 @@ export default function App() {
                   <Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Atmósfera de Sala (Reverb)
                 </span>
                 <span className="text-emerald-400 font-bold font-mono">
-                  {Math.round(ambiente / 10)}%
+                  {Math.round(ambiente / 100)}
                 </span>
               </div>
               <input
                 type="range"
                 min="0"
-                max="100"
+                max="10"
                 step="1"
-                value={Math.round(ambiente / 10)}
+                value={Math.round(ambiente / 100)}
                 onChange={(e) => onAtmosphereSliderChange(parseInt(e.target.value))}
                 className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
               />
@@ -551,20 +551,20 @@ export default function App() {
                   <Zap className="w-3.5 h-3.5 text-emerald-400" /> Refuerzo Dinámico (Loudness)
                 </span>
                 <span className="text-emerald-400 font-bold font-mono">
-                  {Math.round(dynamicBoost / 10)}%
+                  {Math.round(dynamicBoost / 100)}
                 </span>
               </div>
               <input
                 type="range"
                 min="0"
-                max="1000"
-                step="10"
-                value={dynamicBoost}
+                max="10"
+                step="1"
+                value={Math.round(dynamicBoost / 100)}
                 onChange={(e) => {
                   const val = parseInt(e.target.value);
-                  setDynamicBoost(val);
+                  setDynamicBoost(val * 100);
                   setSelectedPresetId('custom');
-                  if (enabled) syncNativeDynamicBoost(val);
+                  if (enabled) syncNativeDynamicBoost(val * 100);
                 }}
                 className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
               />
