@@ -252,6 +252,33 @@ public class WebAppInterface {
     }
 
     @JavascriptInterface
+    public void updateBandLevel(int bandIndex, int levelMillibels) {
+        Log.d(TAG, "updateBandLevel band=" + bandIndex + " level=" + levelMillibels + "mB");
+        try {
+            if (mEqualizer == null) {
+                mEqualizer = new Equalizer(1000, 0);
+                mEqualizer.setEnabled(mMasterEnabled);
+            }
+            if (mEqualizer != null) {
+                short numBands = mEqualizer.getNumberOfBands();
+                if (numBands == 5) {
+                    short physBand = (short) Math.min(4, Math.max(0, bandIndex / 2));
+                    short[] range = mEqualizer.getBandLevelRange();
+                    short clamped = (short) Math.max(range[0], Math.min(range[1], levelMillibels));
+                    mEqualizer.setBandLevel(physBand, clamped);
+                } else if (bandIndex < numBands) {
+                    short[] range = mEqualizer.getBandLevelRange();
+                    short clamped = (short) Math.max(range[0], Math.min(range[1], levelMillibels));
+                    mEqualizer.setBandLevel((short) bandIndex, clamped);
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "updateBandLevel error: " + e.getMessage());
+        }
+        AudioEffectsManager.getInstance().setBandLevel((short) bandIndex, (short) levelMillibels);
+    }
+
+    @JavascriptInterface
     public String getStatus() {
         try {
             JSONObject obj = new JSONObject();

@@ -12,6 +12,7 @@ declare global {
       updateBassBoost(progress: number): void;
       updateSurround(progress: number): void;
       updateDynamicBoost(progress: number): void;
+      updateBandLevel(bandIndex: number, levelMillibels: number): void;
       getStatus(): string;
     };
   }
@@ -250,9 +251,16 @@ export const syncNativeBassBoost = async (strength: number): Promise<void> => {
 export const syncNativeAmbientSound = syncNativeConcertHall;
 
 export const syncNativeBandLevel = async (band: number, dbGain: number): Promise<void> => {
+  const level = Math.round(dbGain * 100);
+  if (typeof window !== 'undefined' && window.AndroidAudio) {
+    try {
+      window.AndroidAudio.updateBandLevel(band, level);
+    } catch (e) {
+      console.warn('AndroidAudio.updateBandLevel error:', e);
+    }
+  }
   if (!isNativeAndroidApp()) return;
   try {
-    const level = Math.round(dbGain * 100);
     await SoundAliveSystem.setBandLevel({ band, level });
   } catch (err) {
     console.warn('Native setBandLevel error:', err);

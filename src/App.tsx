@@ -6,6 +6,7 @@ import {
   syncNativeSurround,
   syncNativeDynamicBoost,
   syncNativeBassBoost,
+  syncNativeBandLevel,
   startNativeBackgroundService,
   getNativeEffectsStatus,
   NativeEffectsStatus,
@@ -25,6 +26,9 @@ import {
   Compass,
   ShieldCheck,
   CheckCircle2,
+  RotateCcw,
+  SlidersHorizontal,
+  Waves,
 } from 'lucide-react';
 
 interface FxSoundPreset {
@@ -108,6 +112,26 @@ const FXSOUND_PRESETS: FxSoundPreset[] = [
   },
 ];
 
+const EQ_FREQUENCIES = [
+  { label: '63Hz', short: '63' },
+  { label: '125Hz', short: '125' },
+  { label: '250Hz', short: '250' },
+  { label: '500Hz', short: '500' },
+  { label: '1kHz', short: '1k' },
+  { label: '2kHz', short: '2k' },
+  { label: '4kHz', short: '4k' },
+  { label: '8kHz', short: '8k' },
+  { label: '16kHz', short: '16k' },
+];
+
+const EQ_PRESETS = [
+  { name: 'Plano', levels: [0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  { name: 'Graves', levels: [6, 5, 3, 1, 0, 0, 0, 0, 0] },
+  { name: 'Vocal', levels: [-1, 0, 1, 3, 5, 4, 2, 1, 0] },
+  { name: 'Rock / V', levels: [5, 3, 1, -1, 0, 2, 3, 5, 6] },
+  { name: 'Agudos', levels: [0, 0, 0, 1, 2, 4, 5, 6, 7] },
+];
+
 export default function App() {
   const [enabled, setEnabled] = useState(true);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('music');
@@ -118,6 +142,9 @@ export default function App() {
   const [surround, setSurround] = useState<number>(350);
   const [bassBoost, setBassBoost] = useState<number>(450);
   const [dynamicBoost, setDynamicBoost] = useState<number>(200);
+
+  // 9-Band Equalizer levels in dB (-10 to +10 dB)
+  const [bandLevels, setBandLevels] = useState<number[]>([0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
   // Native diagnostic state
   const [status, setStatus] = useState<NativeEffectsStatus>({
@@ -173,8 +200,9 @@ export default function App() {
       syncNativeSurround(surround);
       syncNativeBassBoost(bassBoost);
       syncNativeDynamicBoost(dynamicBoost);
+      bandLevels.forEach((db, i) => syncNativeBandLevel(i, db));
     }
-  }, [enabled, clarity, ambiente, surround, bassBoost, dynamicBoost]);
+  }, [enabled, clarity, ambiente, surround, bassBoost, dynamicBoost, bandLevels]);
 
   // Periodic status poll
   useEffect(() => {
@@ -210,10 +238,38 @@ export default function App() {
     }
   };
 
+  // Handle individual band change
+  const handleBandChange = (index: number, newDb: number) => {
+    const updated = [...bandLevels];
+    updated[index] = newDb;
+    setBandLevels(updated);
+    if (enabled) {
+      syncNativeBandLevel(index, newDb);
+    }
+  };
+
+  // Reset bands to 0 dB
+  const handleResetBands = () => {
+    const zeros = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    setBandLevels(zeros);
+    if (enabled) {
+      zeros.forEach((db, i) => syncNativeBandLevel(i, db));
+    }
+  };
+
+  // Apply EQ preset curve
+  const handleApplyEqCurve = (levels: number[]) => {
+    setBandLevels(levels);
+    if (enabled) {
+      levels.forEach((db, i) => syncNativeBandLevel(i, db));
+    }
+  };
+
   const isBridgeLive = hasDirectRootBridge() || status.bridgeConnected || isNativeAndroidApp();
+  const hasBandModifications = bandLevels.some(b => b !== 0);
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans flex flex-col antialiased select-none">
+    <main className="min-h-screen bg-neutral-950 text-neutral-100 font-sans flex flex-col antialiased select-none pb-8">
       {/* Header */}
       <header className="sticky top-0 z-20 bg-neutral-950/95 backdrop-blur-md border-b border-neutral-900 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -283,6 +339,85 @@ export default function App() {
           <p className="text-[11px] text-neutral-400 text-left italic px-1">
             "{FXSOUND_PRESETS.find(p => p.id === selectedPresetId)?.description}"
           </p>
+        </section>
+
+        {/* 9-Band Graphic Equalizer Section (Bandas sin perillas) */}
+        <section className={`bg-neutral-900/50 border border-neutral-800 rounded-2xl p-4 flex flex-col gap-3 transition-opacity duration-300 ${
+          enabled ? 'opacity-100' : 'opacity-40 pointer-events-none'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-neutral-200 flex items-center gap-1.5">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" /> Ecualizador (9 Bandas)
+            </span>
+            <div className="flex items-center gap-1.5">
+              {hasBandModifications && (
+                <button
+                  onClick={handleResetBands}
+                  className="text-[10px] text-neutral-400 hover:text-emerald-400 flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-800/80 hover:bg-neutral-800 transition-colors"
+                  title="Reiniciar a 0 dB"
+                >
+                  <RotateCcw className="w-2.5 h-2.5" /> 0 dB
+                </button>
+              )}
+              <span className="text-[10px] text-neutral-400 font-mono">±10 dB</span>
+            </div>
+          </div>
+
+          {/* Quick Curve Presets */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            {EQ_PRESETS.map((p) => (
+              <button
+                key={p.name}
+                onClick={() => handleApplyEqCurve(p.levels)}
+                className="text-[10px] font-medium px-2 py-1 rounded-lg bg-neutral-800/70 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-700/50 shrink-0 transition-colors"
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+
+          {/* Vertical Faders Strip */}
+          <div className="bg-neutral-950/60 border border-neutral-800/60 rounded-xl p-3 flex justify-between items-center gap-1">
+            {EQ_FREQUENCIES.map((freq, idx) => {
+              const level = bandLevels[idx] || 0;
+              return (
+                <div key={freq.label} className="flex-1 flex flex-col items-center gap-2">
+                  {/* dB readout */}
+                  <span className={`text-[9px] font-mono font-bold leading-none ${
+                    level > 0 ? 'text-emerald-400' : level < 0 ? 'text-amber-400' : 'text-neutral-500'
+                  }`}>
+                    {level > 0 ? `+${level}` : level}
+                  </span>
+
+                  {/* Vertical Range Slider */}
+                  <div className="h-28 flex items-center justify-center relative">
+                    {/* Zero center tick mark */}
+                    <div className="absolute w-2.5 h-[1px] bg-neutral-700/70 pointer-events-none top-1/2 -translate-y-1/2" />
+                    
+                    <input
+                      type="range"
+                      min="-10"
+                      max="10"
+                      step="1"
+                      value={level}
+                      onChange={(e) => handleBandChange(idx, parseInt(e.target.value))}
+                      className="accent-emerald-500 bg-neutral-800/90 rounded-lg cursor-pointer h-24 w-1.5"
+                      style={{
+                        WebkitAppearance: 'slider-vertical',
+                        writingMode: 'vertical-lr',
+                        direction: 'rtl',
+                      }}
+                    />
+                  </div>
+
+                  {/* Frequency label */}
+                  <span className="text-[9px] font-medium text-neutral-400 tracking-tight leading-none">
+                    {freq.short}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </section>
 
         {/* FxSound Sliders Section */}
@@ -450,6 +585,12 @@ export default function App() {
 
           <div className="grid grid-cols-2 gap-2.5 text-[10px] text-neutral-400">
             <div className="flex items-center justify-between border-b border-neutral-800/80 pb-1.5">
+              <span>Bandas EQ (9):</span>
+              <span className={`font-semibold ${enabled && hasBandModifications ? 'text-emerald-400 font-bold' : 'text-neutral-500'}`}>
+                {enabled && hasBandModifications ? 'Activo (Root)' : '0 dB (Plano)'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between border-b border-neutral-800/80 pb-1.5">
               <span>Claridad Vocal:</span>
               <span className={`font-semibold ${enabled && clarity > 0 ? 'text-emerald-400 font-bold' : 'text-neutral-500'}`}>
                 {enabled && clarity > 0 ? 'Activo (Root)' : 'Bypass'}
@@ -473,6 +614,12 @@ export default function App() {
                 {enabled && ambiente > 0 ? 'Activo (Root)' : 'Bypass'}
               </span>
             </div>
+            <div className="flex items-center justify-between border-b border-neutral-800/80 pb-1.5">
+              <span>Refuerzo Dinámico:</span>
+              <span className={`font-semibold ${enabled && dynamicBoost > 0 ? 'text-emerald-400 font-bold' : 'text-neutral-500'}`}>
+                {enabled && dynamicBoost > 0 ? 'Activo (Root)' : 'Bypass'}
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center justify-between pt-1 border-t border-neutral-800/60 text-[10px]">
@@ -486,7 +633,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="mt-auto py-3 text-center text-[10px] text-neutral-600 border-t border-neutral-900">
-        SoundAlive Lite — Optimizado con acceso Root para Samsung J2 Core (SM-J260M)
+        SoundAlive Lite — Ecualizador de 9 Bandas y FxSound con acceso Root para Samsung J2 Core
       </footer>
     </main>
   );
