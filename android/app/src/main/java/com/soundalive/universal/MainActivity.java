@@ -15,11 +15,23 @@ public class MainActivity extends BridgeActivity {
 
         AudioEffectsManager.getInstance().init(this);
 
-        // Inject Direct JavascriptInterface Bridge for zero-latency Root audio control
+        // Configure WebView for reliable local asset loading (fixes black screen on Galaxy J2 Core)
         try {
             android.webkit.WebView webView = getBridge().getWebView();
             if (webView != null) {
-                webView.getSettings().setJavaScriptEnabled(true);
+                android.webkit.WebSettings settings = webView.getSettings();
+                settings.setJavaScriptEnabled(true);
+                settings.setAllowFileAccess(true);
+                settings.setAllowContentAccess(true);
+                settings.setDomStorageEnabled(true);
+                settings.setDatabaseEnabled(true);
+                settings.setAllowFileAccessFromFileURLs(true);
+                settings.setAllowUniversalAccessFromFileURLs(true);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+                }
+
+                // Inject Direct JavascriptInterface Bridge for zero-latency Root audio control
                 webView.addJavascriptInterface(new WebAppInterface(this), "AndroidAudio");
             }
         } catch (Exception e) {
