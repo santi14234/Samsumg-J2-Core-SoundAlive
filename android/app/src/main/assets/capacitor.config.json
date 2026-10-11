@@ -1,5 +1,5 @@
 {
-	"appId": "com.sec.android.app.soundalive",
+	"appId": "com.soundalive.universal",
 	"appName": "SoundAlive Pro",
 	"webDir": "dist",
 	"bundledWebRuntime": false,
