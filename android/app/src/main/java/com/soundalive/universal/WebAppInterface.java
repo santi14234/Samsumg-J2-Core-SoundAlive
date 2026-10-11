@@ -56,7 +56,8 @@ public class WebAppInterface {
 
     private synchronized void inicializarMotoresAudio() {
         try {
-            mReverb = new EnvironmentalReverb(0, 0);
+            // Inicializar Reverb con prioridad alta (1) y sesión global 0
+            mReverb = new EnvironmentalReverb(1, 0);
             if (mReverb != null) {
                 mReverb.setEnabled(mMasterEnabled);
             }
@@ -65,7 +66,8 @@ public class WebAppInterface {
         }
 
         try {
-            mVirtualizer = new Virtualizer(0, 0);
+            // Inicializar Virtualizador 3D con prioridad secundaria (2) en canal separado
+            mVirtualizer = new Virtualizer(2, 0);
             if (mVirtualizer != null) {
                 mVirtualizer.setEnabled(mMasterEnabled);
             }
@@ -194,7 +196,7 @@ public class WebAppInterface {
         mMainHandler.post(() -> {
             if (mVirtualizer == null && progress > 0) {
                 try {
-                    mVirtualizer = new Virtualizer(0, 0);
+                    mVirtualizer = new Virtualizer(2, 0);
                 } catch (Throwable t) {
                     mVirtualizer = null;
                 }
@@ -225,7 +227,7 @@ public class WebAppInterface {
         mMainHandler.post(() -> {
             if (mReverb == null && progress > 0) {
                 try {
-                    mReverb = new EnvironmentalReverb(0, 0);
+                    mReverb = new EnvironmentalReverb(1, 0);
                 } catch (Throwable t) {
                     mReverb = null;
                 }
