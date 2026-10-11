@@ -4,17 +4,22 @@ import android.content.Intent;
 import android.media.audiofx.AudioEffect;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    private static final String TAG = "SoundAliveMain";
     private WebAppInterface mWebAppInterface;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(SoundAlivePlugin.class);
         super.onCreate(savedInstanceState);
+
+        // Automatización Root en el arranque para WRITE_SECURE_SETTINGS
+        setupRootPermissions();
 
         AudioEffectsManager.getInstance().init(this);
 
@@ -49,6 +54,17 @@ public class MainActivity extends BridgeActivity {
 
         // Check if opened from an external music player with a specific audio session
         handleIntent(getIntent());
+    }
+
+    private void setupRootPermissions() {
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", "settings put system sound_effect_enable 1; pm grant com.soundalive.universal android.permission.WRITE_SECURE_SETTINGS"});
+            if (p != null) {
+                p.waitFor();
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "Root permissions setup: " + e.getMessage());
+        }
     }
 
     @Override
