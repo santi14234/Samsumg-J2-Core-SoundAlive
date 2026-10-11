@@ -34,7 +34,6 @@ public class WebAppInterface {
     public WebAppInterface(Context context) {
         this.mContext = context;
         checkRootAccess();
-        forzarDespertarSession0();
         mMainHandler.post(this::inicializarMotoresAudio);
     }
 
@@ -52,15 +51,6 @@ public class WebAppInterface {
         } catch (Exception e) {
             Log.d(TAG, "Root check: " + e.getMessage());
             mIsRootDetected = true;
-        }
-    }
-
-    private void forzarDespertarSession0() {
-        try {
-            Process process = Runtime.getRuntime().exec(new String[]{"su", "-c", "media volume --stream 3 --set 10"});
-            process.waitFor();
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 
@@ -233,7 +223,6 @@ public class WebAppInterface {
     // 4. ATMÓSFERA DE SALA / REVERB HARDWARE EXTREMO (0 a 10)
     @JavascriptInterface
     public void updateAtmosphere(int progress) {
-        forzarDespertarSession0();
         mMainHandler.post(() -> {
             if (mReverb == null && progress > 0) {
                 try {
@@ -244,27 +233,28 @@ public class WebAppInterface {
             }
             if (mReverb != null) {
                 try {
-                    if (!mReverb.getEnabled()) {
-                        mReverb.setEnabled(true);
-                    }
                     if (progress == 0) {
                         mReverb.setRoomLevel((short) -9000);
                         mReverb.setEnabled(false);
                     } else {
+                        if (mMasterEnabled && !mReverb.getEnabled()) {
+                            mReverb.setEnabled(true);
+                        }
                         // 1. GANANCIA DE SALA EXTREMA: Escalado agresivo desde -3800mB hasta 0mB
                         short roomLevel = (short) (-3800 + (progress * 380));
                         mReverb.setRoomLevel(roomLevel);
 
                         // 2. DENSIDAD Y PROFUNDIDAD DE ECO: Forzar rebotes de alta frecuencia
-                        short HFLevel = (short) (progress * 100);
-                        mReverb.setRoomHFLevel((short) (HFLevel - 1000));
+                        short HFLevel = (short) ((progress * 100) - 1000);
+                        mReverb.setRoomHFLevel(HFLevel);
 
                         // 3. TIEMPO DE REVERBERACIÓN (Decay Time): Hasta 4000ms en nivel 10
                         int decayTime = progress * 400;
                         mReverb.setDecayTime(decayTime);
 
                         // 4. MULTIPLICADOR DE REFLEXIONES: Ganancia extra a los primeros rebotes
-                        mReverb.setReflectionsLevel((short) (-2000 + (progress * 200)));
+                        short refLevel = (short) (-2000 + (progress * 200));
+                        mReverb.setReflectionsLevel(refLevel);
                     }
                 } catch (Throwable t) {
                     Log.w(TAG, "updateAtmosphere extreme reverb error: " + t.getMessage());
@@ -363,7 +353,6 @@ public class WebAppInterface {
 
     @JavascriptInterface
     public String loadProfile(int slotId) {
-        forzarDespertarSession0();
         try {
             SharedPreferences sp = mContext.getSharedPreferences("SoundAliveSlots", Context.MODE_PRIVATE);
             int clarity = sp.getInt("slot_" + slotId + "_clarity", 5);
@@ -389,7 +378,6 @@ public class WebAppInterface {
     // MENÚ OCULTO: REINICIO FORZADO DEL SERVIDOR DE AUDIO
     @JavascriptInterface
     public void restartAudioServer() {
-        forzarDespertarSession0();
         mMainHandler.post(() -> {
             try {
                 Runtime.getRuntime().exec(new String[]{"su", "-c", "killall audioserver"});

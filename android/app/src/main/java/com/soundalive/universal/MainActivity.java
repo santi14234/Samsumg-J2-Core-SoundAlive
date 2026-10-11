@@ -18,8 +18,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SoundAlivePlugin.class);
         super.onCreate(savedInstanceState);
 
-        // Automatización Root en el arranque para WRITE_SECURE_SETTINGS
-        setupRootPermissions();
+        // Automatización Root única en el arranque para permisos y despertar sesión 0 multimedia
+        setupRootPermissionsOnce();
 
         AudioEffectsManager.getInstance().init(this);
 
@@ -56,9 +56,12 @@ public class MainActivity extends BridgeActivity {
         handleIntent(getIntent());
     }
 
-    private void setupRootPermissions() {
+    private void setupRootPermissionsOnce() {
         try {
-            Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", "settings put system sound_effect_enable 1; pm grant com.soundalive.universal android.permission.WRITE_SECURE_SETTINGS"});
+            Process p = Runtime.getRuntime().exec(new String[]{
+                "su", "-c", 
+                "settings put system sound_effect_enable 1; pm grant com.soundalive.universal android.permission.WRITE_SECURE_SETTINGS; media volume --stream 3 --set 10"
+            });
             if (p != null) {
                 p.waitFor();
             }
