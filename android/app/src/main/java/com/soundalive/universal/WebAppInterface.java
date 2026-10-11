@@ -220,10 +220,11 @@ public class WebAppInterface {
         AudioEffectsManager.getInstance().setSurround(progress * 100);
     }
 
-    // 4. ATMÓSFERA DE SALA / REVERB HARDWARE EXTREMO (0 a 10)
+    // 4. ATMÓSFERA DE SALA / REVERB: Fusión nativa + Virtualización por software (Equalizer)
     @JavascriptInterface
     public void updateAtmosphere(int progress) {
         mMainHandler.post(() -> {
+            // 1. Comportamiento Nativo NXP (Hardware)
             if (mReverb == null && progress > 0) {
                 try {
                     mReverb = new EnvironmentalReverb(1, 0);
@@ -234,31 +235,52 @@ public class WebAppInterface {
             if (mReverb != null) {
                 try {
                     if (progress == 0) {
-                        mReverb.setRoomLevel((short) -9000);
                         mReverb.setEnabled(false);
                     } else {
                         if (mMasterEnabled && !mReverb.getEnabled()) {
                             mReverb.setEnabled(true);
                         }
-                        // 1. GANANCIA DE SALA EXTREMA: Escalado agresivo desde -3800mB hasta 0mB
-                        short roomLevel = (short) (-3800 + (progress * 380));
-                        mReverb.setRoomLevel(roomLevel);
-
-                        // 2. DENSIDAD Y PROFUNDIDAD DE ECO: Forzar rebotes de alta frecuencia
-                        short HFLevel = (short) ((progress * 100) - 1000);
-                        mReverb.setRoomHFLevel(HFLevel);
-
-                        // 3. TIEMPO DE REVERBERACIÓN (Decay Time): Hasta 4000ms en nivel 10
-                        int decayTime = progress * 400;
-                        mReverb.setDecayTime(decayTime);
-
-                        // 4. MULTIPLICADOR DE REFLEXIONES: Ganancia extra a los primeros rebotes
-                        short refLevel = (short) (-2000 + (progress * 200));
-                        mReverb.setReflectionsLevel(refLevel);
+                        // Mantener valores máximos fijos para el hilo de hardware
+                        mReverb.setRoomLevel((short) 0);
+                        mReverb.setRoomHFLevel((short) 0);
+                        mReverb.setDecayTime(2000);
+                        mReverb.setReflectionsLevel((short) 0);
                     }
                 } catch (Throwable t) {
-                    Log.w(TAG, "updateAtmosphere extreme reverb error: " + t.getMessage());
+                    Log.w(TAG, "Hardware reverb error: " + t.getMessage());
                 }
+            }
+
+            // 2. Inyección de ganancia de eco por software (Equalizer)
+            try {
+                if (mEqualizer == null) {
+                    mEqualizer = new Equalizer(0, 0);
+                }
+                if (mEqualizer != null) {
+                    if (mMasterEnabled && !mEqualizer.getEnabled()) {
+                        mEqualizer.setEnabled(true);
+                    }
+                    short numBands = mEqualizer.getNumberOfBands();
+                    if (numBands >= 5) {
+                        short band1k = (short) Math.min(numBands - 1, 3);
+                        short band2k = (short) Math.min(numBands - 1, 4);
+
+                        if (progress == 0) {
+                            mEqualizer.setBandLevel(band1k, (short) 0);
+                            mEqualizer.setBandLevel(band2k, (short) 0);
+                        } else {
+                            // +12dB en 1kHz, +8dB en 2kHz (proporcional al progreso 1-10)
+                            short boost1k = (short) (progress * 120); // 0 a 1200 mB
+                            short boost2k = (short) (progress * 80);  // 0 a 800 mB
+                            
+                            short[] range = mEqualizer.getBandLevelRange();
+                            mEqualizer.setBandLevel(band1k, (short) Math.min(boost1k, range[1]));
+                            mEqualizer.setBandLevel(band2k, (short) Math.min(boost2k, range[1]));
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "Software reverb injection error: " + t.getMessage());
             }
         });
         AudioEffectsManager.getInstance().setAmbiente(progress * 100);
