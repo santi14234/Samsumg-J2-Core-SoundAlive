@@ -34,6 +34,7 @@ public class WebAppInterface {
     public WebAppInterface(Context context) {
         this.mContext = context;
         checkRootAccess();
+        forzarDespertarSession0();
         mMainHandler.post(this::inicializarMotoresAudio);
     }
 
@@ -51,6 +52,15 @@ public class WebAppInterface {
         } catch (Exception e) {
             Log.d(TAG, "Root check: " + e.getMessage());
             mIsRootDetected = true;
+        }
+    }
+
+    private void forzarDespertarSession0() {
+        try {
+            Process process = Runtime.getRuntime().exec(new String[]{"su", "-c", "media volume --stream 3 --set 10"});
+            process.waitFor();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
@@ -146,10 +156,9 @@ public class WebAppInterface {
                     }
                     short numBands = mEqualizer.getNumberOfBands();
                     if (numBands > 0) {
-                        // Afectar bandas superiores de forma proporcional (0 to 100% -> boost proporcional)
                         short topBand = (short) (numBands - 1);
                         short subTop = (short) Math.max(0, numBands - 2);
-                        short boost = (short) (progress * 100); // 0 to 1000 mB
+                        short boost = (short) (progress * 100);
                         short[] range = mEqualizer.getBandLevelRange();
                         if (boost > range[1]) boost = range[1];
                         mEqualizer.setBandLevel(topBand, boost);
@@ -221,36 +230,45 @@ public class WebAppInterface {
         AudioEffectsManager.getInstance().setSurround(progress * 100);
     }
 
-    // 4. ATMÓSFERA DE SALA / REVERB VIRTUAL POR SOFTWARE (0 a 10) -> Emula eco y resonancia acústica usando el Equalizer
+    // 4. ATMÓSFERA DE SALA / REVERB HARDWARE EXTREMO (0 a 10)
     @JavascriptInterface
     public void updateAtmosphere(int progress) {
+        forzarDespertarSession0();
         mMainHandler.post(() -> {
-            try {
-                if (mEqualizer == null) {
-                    mEqualizer = new Equalizer(0, 0);
+            if (mReverb == null && progress > 0) {
+                try {
+                    mReverb = new EnvironmentalReverb(1, 0);
+                } catch (Throwable t) {
+                    mReverb = null;
                 }
-                if (mEqualizer != null) {
-                    if (mMasterEnabled && !mEqualizer.getEnabled()) {
-                        mEqualizer.setEnabled(true);
+            }
+            if (mReverb != null) {
+                try {
+                    if (!mReverb.getEnabled()) {
+                        mReverb.setEnabled(true);
                     }
-                    short numBands = mEqualizer.getNumberOfBands();
-                    if (numBands >= 5) {
-                        short band1k = (short) Math.min(numBands - 1, 3);
-                        short band2k = (short) Math.min(numBands - 1, 4);
+                    if (progress == 0) {
+                        mReverb.setRoomLevel((short) -9000);
+                        mReverb.setEnabled(false);
+                    } else {
+                        // 1. GANANCIA DE SALA EXTREMA: Escalado agresivo desde -3800mB hasta 0mB
+                        short roomLevel = (short) (-3800 + (progress * 380));
+                        mReverb.setRoomLevel(roomLevel);
 
-                        short boost1k = (short) (progress * 80); // 0 to 800 mB (+8 dB)
-                        short boost2k = (short) (progress * 50); // 0 to 500 mB (+5 dB)
+                        // 2. DENSIDAD Y PROFUNDIDAD DE ECO: Forzar rebotes de alta frecuencia
+                        short HFLevel = (short) (progress * 100);
+                        mReverb.setRoomHFLevel((short) (HFLevel - 1000));
 
-                        short[] range = mEqualizer.getBandLevelRange();
-                        if (boost1k > range[1]) boost1k = range[1];
-                        if (boost2k > range[1]) boost2k = range[1];
+                        // 3. TIEMPO DE REVERBERACIÓN (Decay Time): Hasta 4000ms en nivel 10
+                        int decayTime = progress * 400;
+                        mReverb.setDecayTime(decayTime);
 
-                        mEqualizer.setBandLevel(band1k, boost1k);
-                        mEqualizer.setBandLevel(band2k, boost2k);
+                        // 4. MULTIPLICADOR DE REFLEXIONES: Ganancia extra a los primeros rebotes
+                        mReverb.setReflectionsLevel((short) (-2000 + (progress * 200)));
                     }
+                } catch (Throwable t) {
+                    Log.w(TAG, "updateAtmosphere extreme reverb error: " + t.getMessage());
                 }
-            } catch (Throwable t) {
-                Log.w(TAG, "updateAtmosphere software reverb error: " + t.getMessage());
             }
         });
         AudioEffectsManager.getInstance().setAmbiente(progress * 100);
@@ -288,8 +306,7 @@ public class WebAppInterface {
             try {
                 if (mEqualizer != null) {
                     short numBands = mEqualizer.getNumberOfBands();
-                    // Limiter ceiling adjustment across bands to prevent clipping when volume is maxed
-                    short ceiling = (short) (- (progress * 50)); // e.g. 0 to -500 mB reduction ceiling
+                    short ceiling = (short) (- (progress * 50));
                     for (short b = 0; b < numBands; b++) {
                         short current = mEqualizer.getBandLevel(b);
                         if (current > 0) {
@@ -346,9 +363,9 @@ public class WebAppInterface {
 
     @JavascriptInterface
     public String loadProfile(int slotId) {
+        forzarDespertarSession0();
         try {
             SharedPreferences sp = mContext.getSharedPreferences("SoundAliveSlots", Context.MODE_PRIVATE);
-            // Default FxSound optimized profile: Clarity: 5, Bass: 4, Surround: 3, Atmosphere: 3, Volume: 2, Normalization: 3
             int clarity = sp.getInt("slot_" + slotId + "_clarity", 5);
             int bass = sp.getInt("slot_" + slotId + "_bass", 4);
             int surround = sp.getInt("slot_" + slotId + "_surround", 3);
@@ -372,6 +389,7 @@ public class WebAppInterface {
     // MENÚ OCULTO: REINICIO FORZADO DEL SERVIDOR DE AUDIO
     @JavascriptInterface
     public void restartAudioServer() {
+        forzarDespertarSession0();
         mMainHandler.post(() -> {
             try {
                 Runtime.getRuntime().exec(new String[]{"su", "-c", "killall audioserver"});
