@@ -110,12 +110,12 @@ export default function App() {
       try {
         const jsonStr = (window as any).AndroidAudio.loadProfile(activeSlot);
         const data = JSON.parse(jsonStr);
-        setClarity(data.clarity ?? 5);
-        setBassBoost(data.bass ?? 4);
-        setSurround(data.surround ?? 3);
-        setAtmosphere(data.atmosphere ?? 3);
-        setVolume(data.volume ?? 2);
-        setNormalization(data.normalization ?? 3);
+        setClarity(data.clarity ?? 500);
+        setBassBoost(data.bass ?? 400);
+        setSurround(data.surround ?? 300);
+        setAtmosphere(data.roomType ?? 1); // roomType
+        setVolume(data.mixLevel ?? 3); // mixLevel
+        // setVolume(...) and setNormalization(...) from data if needed
       } catch (e) {
         console.warn('Load profile error:', e);
       }
@@ -127,7 +127,7 @@ export default function App() {
     setActiveSlot(slot);
     if (typeof window !== 'undefined' && (window as any).AndroidAudio) {
       try {
-        (window as any).AndroidAudio.saveProfile(slot, clarity, bassBoost, surround, atmosphere, volume, normalization);
+        (window as any).AndroidAudio.saveProfile(slot, clarity, bassBoost, surround, atmosphere, volume, volume, normalization);
       } catch (e) {
         console.warn('Save profile error:', e);
       }
@@ -471,27 +471,47 @@ export default function App() {
               />
             </div>
 
-            {/* Atmosphere Slider (EnvironmentalReverb) */}
-            <div className="flex flex-col gap-1.5">
+            {/* Atmosphere Selector (Room Type & Mix Level) */}
+            <div className="flex flex-col gap-2 bg-neutral-950 p-3 rounded-xl border border-neutral-800">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-neutral-300 font-medium flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Atmósfera de Sala (Reverb)
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Atmósfera de Sala
                 </span>
-                <span className="text-emerald-400 font-bold font-mono text-sm">
-                  {atmosphere}
-                </span>
+              </div>
+              
+              <select
+                className="bg-neutral-800 text-neutral-100 text-xs p-2 rounded-lg border border-neutral-700"
+                value={atmosphere}
+                onChange={(e) => {
+                  const roomType = parseInt(e.target.value);
+                  setAtmosphere(roomType);
+                  if (enabled && typeof window !== 'undefined' && (window as any).AndroidAudio) {
+                    (window as any).AndroidAudio.updateAtmosphere(roomType, volume);
+                  }
+                }}
+              >
+                <option value="1">Sala 1: Estudio</option>
+                <option value="2">Sala 2: Habitación</option>
+                <option value="3">Sala 3: Estadio</option>
+                <option value="4">Sala 4: Auditorio</option>
+                <option value="5">Sala 5: Catedral</option>
+              </select>
+
+              <div className="flex items-center justify-between text-xs pt-2">
+                <span className="text-neutral-300 font-medium text-[10px]">Nivel de Ganancia (Mix)</span>
+                <span className="text-emerald-400 font-bold font-mono text-sm">{volume}</span>
               </div>
               <input
                 type="range"
                 min="0"
                 max="10"
                 step="1"
-                value={atmosphere}
+                value={volume}
                 onChange={(e) => {
                   const val = parseInt(e.target.value);
-                  setAtmosphere(val);
+                  setVolume(val);
                   if (enabled && typeof window !== 'undefined' && (window as any).AndroidAudio) {
-                    (window as any).AndroidAudio.updateAtmosphere(val);
+                    (window as any).AndroidAudio.updateAtmosphere(atmosphere, val);
                   }
                 }}
                 className="w-full accent-emerald-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"

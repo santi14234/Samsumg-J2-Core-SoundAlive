@@ -220,38 +220,10 @@ public class WebAppInterface {
         AudioEffectsManager.getInstance().setSurround(progress * 100);
     }
 
-    // 4. ATMÓSFERA DE SALA / REVERB: Fusión nativa + Virtualización por software (Equalizer)
+    // 4. ATMÓSFERA DE SALA / REVERB: Selector de 5 Salas + Nivelador de Ganancia (0-10)
     @JavascriptInterface
-    public void updateAtmosphere(int progress) {
+    public void updateAtmosphere(int roomType, int reverbMix) {
         mMainHandler.post(() -> {
-            // 1. Comportamiento Nativo NXP (Hardware)
-            if (mReverb == null && progress > 0) {
-                try {
-                    mReverb = new EnvironmentalReverb(1, 0);
-                } catch (Throwable t) {
-                    mReverb = null;
-                }
-            }
-            if (mReverb != null) {
-                try {
-                    if (progress == 0) {
-                        mReverb.setEnabled(false);
-                    } else {
-                        if (mMasterEnabled && !mReverb.getEnabled()) {
-                            mReverb.setEnabled(true);
-                        }
-                        // Mantener valores máximos fijos para el hilo de hardware
-                        mReverb.setRoomLevel((short) 0);
-                        mReverb.setRoomHFLevel((short) 0);
-                        mReverb.setDecayTime(2000);
-                        mReverb.setReflectionsLevel((short) 0);
-                    }
-                } catch (Throwable t) {
-                    Log.w(TAG, "Hardware reverb error: " + t.getMessage());
-                }
-            }
-
-            // 2. Inyección de ganancia de eco por software (Equalizer)
             try {
                 if (mEqualizer == null) {
                     mEqualizer = new Equalizer(0, 0);
@@ -264,26 +236,40 @@ public class WebAppInterface {
                     if (numBands >= 5) {
                         short band1k = (short) Math.min(numBands - 1, 3);
                         short band2k = (short) Math.min(numBands - 1, 4);
+                        short band16k = (short) Math.min(numBands - 1, 8);
+                        short band500 = (short) Math.min(numBands - 1, 2);
 
-                        if (progress == 0) {
+                        if (reverbMix == 0) {
                             mEqualizer.setBandLevel(band1k, (short) 0);
                             mEqualizer.setBandLevel(band2k, (short) 0);
+                            mEqualizer.setBandLevel(band16k, (short) 0);
+                            mEqualizer.setBandLevel(band500, (short) 0);
                         } else {
-                            // +12dB en 1kHz, +8dB en 2kHz (proporcional al progreso 1-10)
-                            short boost1k = (short) (progress * 120); // 0 a 1200 mB
-                            short boost2k = (short) (progress * 80);  // 0 a 800 mB
+                            float multiplier = reverbMix / 10.0f;
+                            short boost1k = 0, boost2k = 0, cut16k = 0, cut500 = 0;
+
+                            switch (roomType) {
+                                case 1: boost1k = 300; break;
+                                case 2: boost1k = 500; boost2k = 200; break;
+                                case 3: boost1k = 700; boost2k = 400; cut16k = -200; break;
+                                case 4: boost1k = 1000; boost2k = 600; cut500 = -200; break;
+                                case 5: boost1k = 1500; boost2k = 1000; cut500 = -400; break;
+                            }
                             
                             short[] range = mEqualizer.getBandLevelRange();
-                            mEqualizer.setBandLevel(band1k, (short) Math.min(boost1k, range[1]));
-                            mEqualizer.setBandLevel(band2k, (short) Math.min(boost2k, range[1]));
+                            mEqualizer.setBandLevel(band1k, (short) Math.min(boost1k * multiplier, range[1]));
+                            mEqualizer.setBandLevel(band2k, (short) Math.min(boost2k * multiplier, range[1]));
+                            mEqualizer.setBandLevel(band16k, (short) Math.max(cut16k * multiplier, range[0]));
+                            mEqualizer.setBandLevel(band500, (short) Math.max(cut500 * multiplier, range[0]));
                         }
                     }
                 }
             } catch (Throwable t) {
-                Log.w(TAG, "Software reverb injection error: " + t.getMessage());
+                Log.w(TAG, "updateAtmosphere software reverb error: " + t.getMessage());
             }
         });
-        AudioEffectsManager.getInstance().setAmbiente(progress * 100);
+        // Sincronizar también con AudioEffectsManager de forma segura
+        AudioEffectsManager.getInstance().setAmbiente(reverbMix * 100);
     }
 
     // 5. VOLUMEN MAESTRO (0 a 10) -> LoudnessEnhancer con rango seguro de ganancia 0 a 1000 milibelios (mB)
@@ -357,14 +343,15 @@ public class WebAppInterface {
 
     // 7. SISTEMA DE PERFILES CON 7 RANURAS (SharedPreferences)
     @JavascriptInterface
-    public void saveProfile(int slotId, int clarity, int bass, int surround, int atmosphere, int volume, int normalization) {
+    public void saveProfile(int slotId, int clarity, int bass, int surround, int roomType, int mixLevel, int volume, int normalization) {
         try {
             SharedPreferences sp = mContext.getSharedPreferences("SoundAliveSlots", Context.MODE_PRIVATE);
             SharedPreferences.Editor ed = sp.edit();
             ed.putInt("slot_" + slotId + "_clarity", clarity);
             ed.putInt("slot_" + slotId + "_bass", bass);
             ed.putInt("slot_" + slotId + "_surround", surround);
-            ed.putInt("slot_" + slotId + "_atmosphere", atmosphere);
+            ed.putInt("slot_" + slotId + "_roomType", roomType);
+            ed.putInt("slot_" + slotId + "_mixLevel", mixLevel);
             ed.putInt("slot_" + slotId + "_volume", volume);
             ed.putInt("slot_" + slotId + "_normalization", normalization);
             ed.apply();
@@ -380,7 +367,8 @@ public class WebAppInterface {
             int clarity = sp.getInt("slot_" + slotId + "_clarity", 5);
             int bass = sp.getInt("slot_" + slotId + "_bass", 4);
             int surround = sp.getInt("slot_" + slotId + "_surround", 3);
-            int atmosphere = sp.getInt("slot_" + slotId + "_atmosphere", 3);
+            int roomType = sp.getInt("slot_" + slotId + "_roomType", 1);
+            int mixLevel = sp.getInt("slot_" + slotId + "_mixLevel", 3);
             int volume = sp.getInt("slot_" + slotId + "_volume", 2);
             int normalization = sp.getInt("slot_" + slotId + "_normalization", 3);
 
@@ -388,12 +376,13 @@ public class WebAppInterface {
             obj.put("clarity", clarity);
             obj.put("bass", bass);
             obj.put("surround", surround);
-            obj.put("atmosphere", atmosphere);
+            obj.put("roomType", roomType);
+            obj.put("mixLevel", mixLevel);
             obj.put("volume", volume);
             obj.put("normalization", normalization);
             return obj.toString();
         } catch (Exception e) {
-            return "{\"clarity\":5,\"bass\":4,\"surround\":3,\"atmosphere\":3,\"volume\":2,\"normalization\":3}";
+            return "{\"clarity\":5,\"bass\":4,\"surround\":3,\"roomType\":1,\"mixLevel\":3,\"volume\":2,\"normalization\":3}";
         }
     }
 
