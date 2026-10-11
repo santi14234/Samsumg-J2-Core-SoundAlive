@@ -18,12 +18,11 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SoundAlivePlugin.class);
         super.onCreate(savedInstanceState);
 
-        // Automatización Root única en el arranque para permisos y despertar sesión 0 multimedia
+        // Single Root automation on startup for permissions and audio session 0 wake up
         setupRootPermissionsOnce();
 
         AudioEffectsManager.getInstance().init(this);
 
-        // Configure WebView for reliable local asset loading (fixes black screen on Galaxy J2 Core)
         try {
             WebView webView = getBridge().getWebView();
             if (webView != null) {
@@ -39,20 +38,20 @@ public class MainActivity extends BridgeActivity {
                     settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
                 }
 
-                // Optimización de Arranque Instantáneo para Android Go (1GB RAM)
+                // Instant Startup optimization for Android Go (1GB RAM)
                 settings.setRenderPriority(WebSettings.RenderPriority.HIGH);
                 settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
                 webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
 
-                // Inject Direct JavascriptInterface Bridge for zero-latency Root audio control
+                // Inject Direct JavascriptInterface Bridge under both AndroidAudio and WebAppInterface
                 mWebAppInterface = new WebAppInterface(this);
                 webView.addJavascriptInterface(mWebAppInterface, "AndroidAudio");
+                webView.addJavascriptInterface(mWebAppInterface, "WebAppInterface");
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        // Check if opened from an external music player with a specific audio session
         handleIntent(getIntent());
     }
 
@@ -85,8 +84,20 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
+    protected void onPause() {
+        super.onPause();
+        // Keep instances alive in RAM (Eqfy MM Retain) - do NOT release on background minimize
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // Keep active in swap memory
+    }
+
+    @Override
     public void onDestroy() {
-        // 1. Liberación absoluta de todos los efectos nativos al cerrar la app
+        // Release only when explicitly swiped away from recent apps list
         try {
             if (mWebAppInterface != null) {
                 mWebAppInterface.release();
@@ -97,7 +108,6 @@ public class MainActivity extends BridgeActivity {
 
         super.onDestroy();
 
-        // 2. Matar el proceso y liberar toda la memoria RAM de inmediato
         try {
             android.os.Process.killProcess(android.os.Process.myPid());
         } catch (Throwable ignored) {

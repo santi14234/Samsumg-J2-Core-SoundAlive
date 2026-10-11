@@ -1,32 +1,53 @@
 @import "tailwindcss";
 
 html, body {
-  background-color: #000000;
+  background-color: #0b0d11;
   color: #ffffff;
   overscroll-behavior: none;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
   margin: 0;
   padding: 0;
+  width: 100%;
   height: 100%;
-  overflow-x: hidden;
+  overflow: hidden;
+  touch-action: none;
 }
 
-/* Vertical slider locked */
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+
+/* Custom glow effects for FxSound Pro theme */
+.shadow-neon-cyan {
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.4);
+}
+
+.shadow-neon-blue {
+  box-shadow: 0 0 15px rgba(0, 127, 255, 0.5);
+}
+
+.shadow-neon-purple {
+  box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
+}
+
+/* Clean sliders */
 input[type="range"] {
   touch-action: none;
 }
 
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.animate-shimmer {
-  animation: shimmer 1.5s infinite linear;
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #00f2fe;
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(0, 242, 254, 0.8);
 }

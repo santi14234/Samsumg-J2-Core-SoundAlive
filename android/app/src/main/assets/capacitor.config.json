@@ -1,6 +1,6 @@
 {
-	"appId": "com.soundalive.universal",
-	"appName": "SoundAlive Lite",
+	"appId": "com.sec.android.app.soundalive",
+	"appName": "SoundAlive Pro",
 	"webDir": "dist",
 	"bundledWebRuntime": false,
 	"server": {

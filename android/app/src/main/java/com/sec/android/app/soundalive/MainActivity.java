@@ -48,6 +48,7 @@ public class MainActivity extends BridgeActivity {
                 // Inject Direct JavascriptInterface Bridge for zero-latency Root audio control
                 mWebAppInterface = new WebAppInterface(this);
                 webView.addJavascriptInterface(mWebAppInterface, "AndroidAudio");
+                webView.addJavascriptInterface(mWebAppInterface, "WebAppInterface");
             }
         } catch (Exception e) {
             e.printStackTrace();
