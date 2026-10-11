@@ -221,34 +221,36 @@ public class WebAppInterface {
         AudioEffectsManager.getInstance().setSurround(progress * 100);
     }
 
-    // 4. ATMÓSFERA DE SALA / REVERB (0 a 10) -> Si 0: -9000mB. Si 1-10: -4500mB a 0mB
+    // 4. ATMÓSFERA DE SALA / REVERB VIRTUAL POR SOFTWARE (0 a 10) -> Emula eco y resonancia acústica usando el Equalizer
     @JavascriptInterface
     public void updateAtmosphere(int progress) {
         mMainHandler.post(() -> {
-            if (mReverb == null && progress > 0) {
-                try {
-                    mReverb = new EnvironmentalReverb(1, 0);
-                } catch (Throwable t) {
-                    mReverb = null;
+            try {
+                if (mEqualizer == null) {
+                    mEqualizer = new Equalizer(0, 0);
                 }
-            }
-            if (mReverb != null) {
-                try {
-                    if (progress == 0) {
-                        mReverb.setRoomLevel((short) -9000);
-                        mReverb.setEnabled(false);
-                    } else {
-                        if (mMasterEnabled && !mReverb.getEnabled()) {
-                            mReverb.setEnabled(true);
-                        }
-                        short roomLevel = (short) (-4500 + (progress * 450));
-                        if (roomLevel > 0) roomLevel = 0;
-                        if (roomLevel < -9000) roomLevel = -9000;
-                        mReverb.setRoomLevel(roomLevel);
+                if (mEqualizer != null) {
+                    if (mMasterEnabled && !mEqualizer.getEnabled()) {
+                        mEqualizer.setEnabled(true);
                     }
-                } catch (Throwable t) {
-                    Log.w(TAG, "updateAtmosphere error: " + t.getMessage());
+                    short numBands = mEqualizer.getNumberOfBands();
+                    if (numBands >= 5) {
+                        short band1k = (short) Math.min(numBands - 1, 3);
+                        short band2k = (short) Math.min(numBands - 1, 4);
+
+                        short boost1k = (short) (progress * 80); // 0 to 800 mB (+8 dB)
+                        short boost2k = (short) (progress * 50); // 0 to 500 mB (+5 dB)
+
+                        short[] range = mEqualizer.getBandLevelRange();
+                        if (boost1k > range[1]) boost1k = range[1];
+                        if (boost2k > range[1]) boost2k = range[1];
+
+                        mEqualizer.setBandLevel(band1k, boost1k);
+                        mEqualizer.setBandLevel(band2k, boost2k);
+                    }
                 }
+            } catch (Throwable t) {
+                Log.w(TAG, "updateAtmosphere software reverb error: " + t.getMessage());
             }
         });
         AudioEffectsManager.getInstance().setAmbiente(progress * 100);
