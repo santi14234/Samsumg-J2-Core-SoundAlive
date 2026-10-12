@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">SoundAlive Lite</string>
-    <string name="title_activity_main">SoundAlive Lite</string>
+    <string name="app_name">SoundAlive Pro</string>
+    <string name="title_activity_main">SoundAlive Pro</string>
     <string name="package_name">com.soundalive.universal</string>
     <string name="custom_url_scheme">com.soundalive.universal</string>
 </resources>

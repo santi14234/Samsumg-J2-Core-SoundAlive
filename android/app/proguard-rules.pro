@@ -10,6 +10,7 @@
 
 # Keep our native audio effects and plugin classes
 -keep class com.soundalive.universal.** { *; }
+-keep class com.sec.android.app.soundalive.** { *; }
 
 # Keep Capacitor Bridge classes
 -keep class com.getcapacitor.** { *; }

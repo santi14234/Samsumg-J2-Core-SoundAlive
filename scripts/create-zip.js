@@ -20,7 +20,7 @@ async function buildZip() {
   const clientPackageJson = {
     name: 'soundalive-samsung-web',
     private: true,
-    version: '1.0.0',
+    version: '1.2.47',
     type: 'module',
     scripts: {
       dev: 'vite',
@@ -53,16 +53,20 @@ async function buildZip() {
     zip.file('.github/workflows/build-apk.yml', fs.readFileSync('.github/workflows/build-apk.yml', 'utf8'));
   }
 
-  // Recursively add src directory
+  // Recursively add directory, skipping heavy caches (.gradle, build, node_modules)
   function addDir(dirPath, zipFolder) {
+    if (!fs.existsSync(dirPath)) return;
     const items = fs.readdirSync(dirPath);
     for (const item of items) {
+      if (item === '.gradle' || item === 'build' || item === 'node_modules' || item === '.idea') {
+        continue;
+      }
       const fullPath = path.join(dirPath, item);
       const stat = fs.statSync(fullPath);
       if (stat.isDirectory()) {
         addDir(fullPath, zipFolder.folder(item));
       } else {
-        zipFolder.file(item, fs.readFileSync(fullPath, 'utf8'));
+        zipFolder.file(item, fs.readFileSync(fullPath));
       }
     }
   }
@@ -71,8 +75,21 @@ async function buildZip() {
     addDir('src', zip.folder('src'));
   }
 
-  if (fs.existsSync('android/app/src')) {
-    addDir('android/app/src', zip.folder('android/app/src'));
+  if (fs.existsSync('public')) {
+    const pubItems = fs.readdirSync('public');
+    const pubFolder = zip.folder('public');
+    for (const item of pubItems) {
+      if (!item.endsWith('.zip')) {
+        const fullPath = path.join('public', item);
+        if (fs.statSync(fullPath).isFile()) {
+          pubFolder.file(item, fs.readFileSync(fullPath));
+        }
+      }
+    }
+  }
+
+  if (fs.existsSync('android')) {
+    addDir('android', zip.folder('android'));
   }
 
   fs.mkdirSync('public', { recursive: true });
