@@ -46,7 +46,7 @@ jobs:
         run: |
           cd android
           ./gradlew clean --no-daemon
-          ./gradlew assembleRelease --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace
           cd ..
           mkdir -p output_apk
           find android/app/build/outputs/apk -name "*.apk" -not -name "*unsigned*" -exec cp {} output_apk/SoundAlive-Pro.apk \;
