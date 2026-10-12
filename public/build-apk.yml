@@ -45,6 +45,7 @@ jobs:
       - name: Compilar APK con Gradle
         run: |
           cd android
+          ./gradlew clean --no-daemon
           ./gradlew assembleRelease --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon --stacktrace
           cd ..
           mkdir -p output_apk
