@@ -1,19 +1,865 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SoundAlive Web - Ecualizador Samsung</title>
-    <meta name="description" content="Recreación universal de Samsung SoundAlive con ecualizador de 9 bandas, perillas de graves/agudos, efectos de válvulas, 3D y sala de conciertos." />
-    <meta property="og:title" content="SoundAlive Web - Ecualizador Samsung" />
-    <meta property="og:description" content="Recreación universal de Samsung SoundAlive con ecualizador de 9 bandas, perillas de graves/agudos, efectos de válvulas, 3D y sala de conciertos." />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <script type="module" crossorigin src="/assets/index-DutMFNAs.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-B9HvVBFn.css">
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
-</html>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SoundAlive Pro - FxSound Native</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #090c12;
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #app-container {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      background: #0d111a;
+    }
 
+    /* BARRA SUPERIOR */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 44px;
+      padding: 0 12px;
+      background: #121722;
+      border-bottom: 1px solid #1f2738;
+      shrink: 0;
+    }
+    .top-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn-icon {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      outline: none;
+    }
+    .btn-heart { color: #ec4899; }
+    .btn-power {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #1e293b;
+      border: 1px solid #00f0ff;
+      color: #00f0ff;
+      box-shadow: 0 0 8px rgba(0,240,255,0.4);
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-power.off {
+      border-color: #64748b;
+      color: #64748b;
+      box-shadow: none;
+    }
+    .brand-title {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: #f8fafc;
+    }
+    .brand-accent {
+      color: #00ff66;
+      text-shadow: 0 0 6px rgba(0,255,102,0.6);
+    }
+    .top-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .window-btn {
+      color: #94a3b8;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    /* CURVA ESPECTRO DE NEÓN */
+    .spectrum-panel {
+      position: relative;
+      height: 70px;
+      background: #0a0e17;
+      border-bottom: 1px solid #1a2333;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas#spectrumCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .spline-badge {
+      position: absolute;
+      top: 6px;
+      left: 10px;
+      font-size: 9px;
+      font-family: monospace;
+      color: #00ff66;
+      background: rgba(0,255,102,0.1);
+      border: 1px solid rgba(0,255,102,0.3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+
+    /* RANURAS PRESETS P1 - P7 */
+    .slots-bar {
+      display: flex;
+      gap: 4px;
+      padding: 6px 10px;
+      background: #101520;
+      border-bottom: 1px solid #1a2333;
+      overflow-x: auto;
+    }
+    .slot-pill {
+      flex: 1;
+      padding: 4px 0;
+      font-size: 10px;
+      font-weight: 700;
+      text-align: center;
+      background: #182030;
+      color: #94a3b8;
+      border: 1px solid #243048;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .slot-pill.active {
+      background: #00ff66;
+      color: #05140b;
+      border-color: #00ff66;
+      box-shadow: 0 0 8px rgba(0,255,102,0.5);
+    }
+
+    /* PANEL PRINCIPAL: 10 BANDAS HORIZONTALES */
+    .bands-panel {
+      flex: 1;
+      display: flex;
+      padding: 6px 4px;
+      justify-content: space-around;
+      background: #0b0f19;
+      touch-action: none;
+    }
+    .band-column {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      width: 9%;
+      height: 100%;
+      touch-action: none;
+    }
+    .band-db-val {
+      font-size: 10px;
+      font-weight: 800;
+      font-family: monospace;
+      color: #00ff66;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      text-shadow: 0 0 5px rgba(0,255,102,0.6);
+    }
+    .fader-track-container {
+      flex: 1;
+      width: 22px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      cursor: pointer;
+      margin: 4px 0;
+    }
+    .fader-groove {
+      width: 4px;
+      height: 100%;
+      background: #172131;
+      border-radius: 2px;
+      position: relative;
+      border: 1px solid #23324a;
+    }
+    .fader-zero-mark {
+      position: absolute;
+      top: 50%;
+      left: -6px;
+      right: -6px;
+      height: 1px;
+      background: rgba(255,255,255,0.25);
+    }
+    .fader-thumb {
+      position: absolute;
+      left: 50%;
+      width: 20px;
+      height: 28px;
+      transform: translate(-50%, -50%);
+      background: linear-gradient(180deg, #2a374f 0%, #172030 100%);
+      border: 1px solid #00f0ff;
+      border-radius: 4px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.6), 0 0 6px rgba(0,240,255,0.4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      pointer-events: none;
+    }
+    .fader-thumb::after {
+      content: '';
+      width: 10px;
+      height: 2px;
+      background: #00f0ff;
+      border-radius: 1px;
+      box-shadow: 0 0 4px #00f0ff;
+    }
+
+    /* MINI-POTENCIÓMETRO FACTOR Q */
+    .q-pot-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      touch-action: none;
+    }
+    .q-knob {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #252b38;
+      border: 2px solid #007fff;
+      position: relative;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.5), 0 0 5px rgba(0,127,255,0.3);
+      touch-action: none;
+    }
+    .q-pointer {
+      position: absolute;
+      width: 2px;
+      height: 8px;
+      background: #007fff;
+      top: 2px;
+      left: 50%;
+      margin-left: -1px;
+      transform-origin: bottom center;
+      border-radius: 1px;
+      pointer-events: none;
+    }
+    .q-val-text {
+      font-size: 7px;
+      font-family: monospace;
+      color: #94a3b8;
+      pointer-events: none;
+    }
+    .band-freq-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: #cbd5e1;
+      font-family: monospace;
+      margin-top: 2px;
+    }
+
+    /* PANEL INFERIOR DINÁMICA AVANZADA (ROJO CARMESÍ) */
+    .crimson-panel {
+      background: #140d11;
+      border-top: 2px solid #7f1d1d;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      shrink: 0;
+    }
+    .crimson-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .crimson-title {
+      font-size: 10px;
+      font-weight: 800;
+      color: #ef4444;
+      letter-spacing: 0.5px;
+    }
+    .room-selector {
+      display: flex;
+      gap: 4px;
+    }
+    .room-btn {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 6px;
+      background: #201115;
+      color: #f87171;
+      border: 1px solid #7f1d1d;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .room-btn.active {
+      background: #dc2626;
+      color: #fff;
+      box-shadow: 0 0 6px rgba(220,38,38,0.6);
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .slider-label {
+      width: 110px;
+      font-size: 9px;
+      font-weight: 700;
+      color: #fca5a5;
+    }
+    .slider-bar-wrap {
+      flex: 1;
+      height: 18px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      touch-action: none;
+    }
+    .slider-rail {
+      width: 100%;
+      height: 4px;
+      background: #30171d;
+      border-radius: 2px;
+      position: relative;
+    }
+    .slider-fill {
+      height: 100%;
+      background: #dc2626;
+      border-radius: 2px;
+      box-shadow: 0 0 6px rgba(220,38,38,0.5);
+    }
+    .slider-thumb {
+      position: absolute;
+      top: 50%;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #ef4444;
+      border: 2px solid #fff;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 6px rgba(239,68,68,0.8);
+      pointer-events: none;
+    }
+    .slider-val-green {
+      width: 45px;
+      text-align: right;
+      font-size: 10px;
+      font-weight: 800;
+      font-family: monospace;
+      color: #00ff66;
+      text-shadow: 0 0 5px rgba(0,255,102,0.6);
+    }
+
+    /* MODAL DE ROOT RESTART */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      border: 1px solid #00ff66;
+      color: #00ff66;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: bold;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 999;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div id="app-container">
+
+    <!-- BARRA SUPERIOR -->
+    <header class="top-bar">
+      <div class="top-left">
+        <button class="btn-icon btn-heart" title="Perfil Favorito">♥</button>
+        <button class="btn-power" id="btnPower" title="Encendido/Apagado DSP">⏻</button>
+        <div class="brand-title">SOUNDALIVE <span class="brand-accent">PRO</span></div>
+      </div>
+      <div class="top-right">
+        <!-- Menú Hamburguesa para matar audioserver por Root -->
+        <button class="btn-icon" id="btnMenuRoot" title="Reiniciar audioserver (Root)">≡</button>
+        <span class="window-btn" id="btnMinimize" title="Minimizar (Eqfy MM Retain)">_</span>
+        <span class="window-btn" id="btnClose" title="Cerrar app">✕</span>
+      </div>
+    </header>
+
+    <!-- CURVA ESPECTRO DE NEÓN -->
+    <div class="spectrum-panel">
+      <canvas id="spectrumCanvas"></canvas>
+      <div class="spline-badge">SPLINE S_SYNC • SESSION 0 & 121</div>
+    </div>
+
+    <!-- RANURAS DE ALMACENAMIENTO (P1 a P7) -->
+    <div class="slots-bar">
+      <div class="slot-pill active" data-slot="1">P1</div>
+      <div class="slot-pill" data-slot="2">P2</div>
+      <div class="slot-pill" data-slot="3">P3</div>
+      <div class="slot-pill" data-slot="4">P4</div>
+      <div class="slot-pill" data-slot="5">P5</div>
+      <div class="slot-pill" data-slot="6">P6</div>
+      <div class="slot-pill" data-slot="7">P7</div>
+    </div>
+
+    <!-- PANEL DE 10 BANDAS HORIZONTALES CON POTENCIÓMETROS INDEPENDIENTES Q -->
+    <main class="bands-panel" id="bandsPanel">
+      <!-- Inyectado dinámicamente por JavaScript -->
+    </main>
+
+    <!-- PANEL INFERIOR DE DINÁMICA AVANZADA (ROJO CARMESÍ) -->
+    <footer class="crimson-panel">
+      <div class="crimson-header">
+        <span class="crimson-title">DINÁMICA AVANZADA & ATMÓSFERA PSICOACÚSTICA</span>
+        <div class="room-selector">
+          <button class="room-btn" data-room="1">S1</button>
+          <button class="room-btn" data-room="2">S2</button>
+          <button class="room-btn" data-room="3">S3</button>
+          <button class="room-btn" data-room="4">S4</button>
+          <button class="room-btn active" data-room="5">S5</button>
+        </div>
+      </div>
+
+      <!-- FADER 1: VOLUMEN MAESTRO DAC -->
+      <div class="slider-row">
+        <span class="slider-label">VOLUMEN DAC</span>
+        <div class="slider-bar-wrap" id="sliderVolWrap">
+          <div class="slider-rail">
+            <div class="slider-fill" id="fillVol" style="width: 100%;"></div>
+            <div class="slider-thumb" id="thumbVol" style="left: 100%;"></div>
+          </div>
+        </div>
+        <span class="slider-val-green" id="valVol">100%</span>
+      </div>
+
+      <!-- FADER 2: NORMALIZACIÓN DINÁMICA / LIMITER -->
+      <div class="slider-row">
+        <span class="slider-label">LIMITER (-6 dB)</span>
+        <div class="slider-bar-wrap" id="sliderLimiterWrap">
+          <div class="slider-rail">
+            <div class="slider-fill" id="fillLimiter" style="width: 70%;"></div>
+            <div class="slider-thumb" id="thumbLimiter" style="left: 70%;"></div>
+          </div>
+        </div>
+        <span class="slider-val-green" id="valLimiter">-6 dB</span>
+      </div>
+
+      <!-- FADER 3: Q DEL FILTRO -->
+      <div class="slider-row">
+        <span class="slider-label">Q DEL FILTRO</span>
+        <div class="slider-bar-wrap" id="sliderFilterQWrap">
+          <div class="slider-rail">
+            <div class="slider-fill" id="fillFilterQ" style="width: 50%;"></div>
+            <div class="slider-thumb" id="thumbFilterQ" style="left: 50%;"></div>
+          </div>
+        </div>
+        <span class="slider-val-green" id="valFilterQ">1.0x</span>
+      </div>
+
+      <!-- FADER 4: BALANCE ESTÉREO -->
+      <div class="slider-row">
+        <span class="slider-label">BALANCE</span>
+        <div class="slider-bar-wrap" id="sliderBalanceWrap">
+          <div class="slider-rail">
+            <div class="slider-fill" id="fillBalance" style="width: 50%;"></div>
+            <div class="slider-thumb" id="thumbBalance" style="left: 50%;"></div>
+          </div>
+        </div>
+        <span class="slider-val-green" id="valBalance">C</span>
+      </div>
+    </footer>
+  </div>
+
+  <div class="toast" id="toastMsg">AudioServer reiniciado por Root</div>
+
+  <script>
+    // ESTADO REACTIVO DEL SISTEMA
+    const FREQS = ["41Hz", "63Hz", "125Hz", "250Hz", "500Hz", "1kHz", "2kHz", "4kHz", "8kHz", "16kHz"];
+    let eqGains = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // -12 a +12 dB
+    let eqQs = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]; // 0.5x a 3.0x
+    let masterPower = true;
+    let currentSlot = 1;
+    let currentRoom = 5; // Sala 5 Extrema
+    let dacVolume = 100;
+    let limiterDb = -6;
+    let filterQ = 10;
+    let balanceVal = 0;
+
+    // INYECCIÓN UNIFICADA AL PUENTE JAVA NATIVO
+    function callNativeAudio(param, val) {
+      try {
+        if (window.Android && typeof window.Android.updateAudio === 'function') {
+          window.Android.updateAudio(String(param), Number(val));
+        } else if (window.AndroidAudio && typeof window.AndroidAudio.updateAudio === 'function') {
+          window.AndroidAudio.updateAudio(String(param), Number(val));
+        }
+      } catch (e) {
+        console.warn("Bridge native call:", param, val, e);
+      }
+    }
+
+    // RENDERIZADO DE LAS 10 BANDAS
+    const bandsPanel = document.getElementById("bandsPanel");
+    function renderBands() {
+      bandsPanel.innerHTML = "";
+      FREQS.forEach((freq, idx) => {
+        const col = document.createElement("div");
+        col.className = "band-column";
+
+        // 1. Número en verde arriba
+        const dbText = document.createElement("div");
+        dbText.className = "band-db-val";
+        dbText.id = "db-val-" + idx;
+        dbText.textContent = (eqGains[idx] > 0 ? "+" : "") + eqGains[idx];
+
+        // 2. Fader Vertical
+        const trackWrap = document.createElement("div");
+        trackWrap.className = "fader-track-container";
+
+        const groove = document.createElement("div");
+        groove.className = "fader-groove";
+
+        const zeroMark = document.createElement("div");
+        zeroMark.className = "fader-zero-mark";
+        groove.appendChild(zeroMark);
+
+        const thumb = document.createElement("div");
+        thumb.className = "fader-thumb";
+        thumb.id = "fader-thumb-" + idx;
+        // Mapear ganancia -12..+12 a porcentaje de arriba a abajo (0% = +12, 100% = -12)
+        const topPct = ((12 - eqGains[idx]) / 24) * 100;
+        thumb.style.top = topPct + "%";
+
+        trackWrap.appendChild(groove);
+        trackWrap.appendChild(thumb);
+
+        // Control táctil vertical estricto para fader (touch-action: none)
+        function handleFaderDrag(clientY) {
+          const rect = trackWrap.getBoundingClientRect();
+          let relY = (clientY - rect.top) / rect.height;
+          relY = Math.max(0, Math.min(1, relY));
+          const gain = Math.round(12 - (relY * 24));
+          if (eqGains[idx] !== gain) {
+            eqGains[idx] = gain;
+            dbText.textContent = (gain > 0 ? "+" : "") + gain;
+            thumb.style.top = ((12 - gain) / 24 * 100) + "%";
+            callNativeAudio(freq, gain);
+            drawSpectrum();
+          }
+        }
+
+        trackWrap.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          handleFaderDrag(e.clientY);
+          function onPointerMove(moveE) {
+            moveE.preventDefault();
+            handleFaderDrag(moveE.clientY);
+          }
+          function onPointerUp() {
+            window.removeEventListener("pointermove", onPointerMove);
+            window.removeEventListener("pointerup", onPointerUp);
+          }
+          window.addEventListener("pointermove", onPointerMove, { passive: false });
+          window.addEventListener("pointerup", onPointerUp);
+        });
+
+        // 3. Mini Potenciómetro Circular Q (giro vertical arriba/abajo)
+        const qWrap = document.createElement("div");
+        qWrap.className = "q-pot-wrap";
+
+        const knob = document.createElement("div");
+        knob.className = "q-knob";
+        knob.id = "q-knob-" + idx;
+
+        const pointer = document.createElement("div");
+        pointer.className = "q-pointer";
+        pointer.id = "q-pointer-" + idx;
+        const angle = ((eqQs[idx] - 0.5) / 2.5) * 270 - 135;
+        pointer.style.transform = `rotate(${angle}deg)`;
+        knob.appendChild(pointer);
+
+        const qText = document.createElement("div");
+        qText.className = "q-val-text";
+        qText.id = "q-text-" + idx;
+        qText.textContent = eqQs[idx].toFixed(1) + "x";
+
+        function handleQDrag(startY, initialQ) {
+          function onMove(e) {
+            e.preventDefault();
+            const deltaY = startY - e.clientY;
+            let newQ = initialQ + (deltaY / 80) * 2.5;
+            newQ = Math.max(0.5, Math.min(3.0, Math.round(newQ * 10) / 10));
+            if (eqQs[idx] !== newQ) {
+              eqQs[idx] = newQ;
+              qText.textContent = newQ.toFixed(1) + "x";
+              const newAngle = ((newQ - 0.5) / 2.5) * 270 - 135;
+              pointer.style.transform = `rotate(${newAngle}deg)`;
+              try {
+                if (window.Android && window.Android.updateBandQ) {
+                  window.Android.updateBandQ(idx, newQ);
+                }
+              } catch (err) {}
+              drawSpectrum();
+            }
+          }
+          function onUp() {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+          }
+          window.addEventListener("pointermove", onMove, { passive: false });
+          window.addEventListener("pointerup", onUp);
+        }
+
+        knob.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleQDrag(e.clientY, eqQs[idx]);
+        });
+
+        qWrap.appendChild(knob);
+        qWrap.appendChild(qText);
+
+        // 4. Etiqueta fija de frecuencia
+        const freqLabel = document.createElement("div");
+        freqLabel.className = "band-freq-label";
+        freqLabel.textContent = freq;
+
+        col.appendChild(dbText);
+        col.appendChild(trackWrap);
+        col.appendChild(qWrap);
+        col.appendChild(freqLabel);
+
+        bandsPanel.appendChild(col);
+      });
+    }
+
+    // ESPECTRO Y CURVA SPLINE S_SYNC
+    const canvas = document.getElementById("spectrumCanvas");
+    const ctx = canvas.getContext("2d");
+
+    function resizeCanvas() {
+      canvas.width = canvas.parentElement.clientWidth;
+      canvas.height = canvas.parentElement.clientHeight;
+      drawSpectrum();
+    }
+    window.addEventListener("resize", resizeCanvas);
+
+    function drawSpectrum() {
+      if (!ctx) return;
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // Línea de referencia 0 dB
+      ctx.strokeStyle = "#1a2538";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+
+      if (!masterPower) return;
+
+      // Calcular puntos para las 10 bandas
+      const points = [];
+      const step = w / 11;
+      eqGains.forEach((gain, i) => {
+        const x = step * (i + 1);
+        const y = (h / 2) - (gain / 12) * (h * 0.42);
+        points.push({ x, y });
+      });
+
+      // Dibujar curva Spline de neón azul
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(points[0].x, points[0].y);
+
+      for (let i = 0; i < points.length - 1; i++) {
+        const xc = (points[i].x + points[i + 1].x) / 2;
+        const yc = (points[i].y + points[i + 1].y) / 2;
+        ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+      }
+      ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+      ctx.lineTo(w, h / 2);
+
+      ctx.strokeStyle = "#00f0ff";
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = "#00f0ff";
+      ctx.shadowBlur = 8;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Relleno de degradado debajo de la curva
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, "rgba(0, 240, 255, 0.25)");
+      grad.addColorStop(1, "rgba(0, 240, 255, 0.0)");
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // CONTROLES DE DINÁMICA AVANZADA (ROJO CARMESÍ)
+    function setupCrimsonSlider(wrapId, fillId, thumbId, valId, min, max, initial, unit, paramName, formatFn) {
+      const wrap = document.getElementById(wrapId);
+      const fill = document.getElementById(fillId);
+      const thumb = document.getElementById(thumbId);
+      const valText = document.getElementById(valId);
+
+      let currentVal = initial;
+
+      function updateUI(val) {
+        const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
+        fill.style.width = pct + "%";
+        thumb.style.left = pct + "%";
+        valText.textContent = formatFn ? formatFn(val) : val + unit;
+      }
+
+      function onMove(clientX) {
+        const rect = wrap.getBoundingClientRect();
+        let pct = (clientX - rect.left) / rect.width;
+        pct = Math.max(0, Math.min(1, pct));
+        const val = Math.round(min + (pct * (max - min)));
+        if (currentVal !== val) {
+          currentVal = val;
+          updateUI(val);
+          callNativeAudio(paramName, val);
+        }
+      }
+
+      wrap.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        onMove(e.clientX);
+        function onPointerMove(mv) {
+          mv.preventDefault();
+          onMove(mv.clientX);
+        }
+        function onPointerUp() {
+          window.removeEventListener("pointermove", onPointerMove);
+          window.removeEventListener("pointerup", onPointerUp);
+        }
+        window.addEventListener("pointermove", onPointerMove, { passive: false });
+        window.addEventListener("pointerup", onPointerUp);
+      });
+
+      updateUI(initial);
+    }
+
+    // ACCIONES GENERALES
+    document.getElementById("btnPower").addEventListener("click", () => {
+      masterPower = !masterPower;
+      const btn = document.getElementById("btnPower");
+      btn.classList.toggle("off", !masterPower);
+      try {
+        if (window.Android && window.Android.setMasterPower) {
+          window.Android.setMasterPower(masterPower);
+        }
+      } catch (e) {}
+      drawSpectrum();
+    });
+
+    document.getElementById("btnMenuRoot").addEventListener("click", () => {
+      try {
+        if (window.Android && window.Android.restartAudioServer) {
+          window.Android.restartAudioServer();
+        }
+      } catch (e) {}
+      const toast = document.getElementById("toastMsg");
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 2000);
+    });
+
+    document.getElementById("btnMinimize").addEventListener("click", () => {
+      console.log("Minimizar app (Eqfy MM Retain mantendrá audio)");
+    });
+
+    document.getElementById("btnClose").addEventListener("click", () => {
+      try {
+        if (window.Android && window.Android.release) {
+          window.Android.release();
+        }
+      } catch (e) {}
+    });
+
+    // SELECTOR DE SALAS
+    document.querySelectorAll(".room-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".room-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentRoom = parseInt(btn.dataset.room);
+        try {
+          if (window.Android && window.Android.updateAtmosphere) {
+            window.Android.updateAtmosphere(currentRoom, 10);
+          }
+        } catch (e) {}
+      });
+    });
+
+    // SELECTOR DE RANURAS P1 - P7
+    document.querySelectorAll(".slot-pill").forEach(pill => {
+      pill.addEventListener("click", () => {
+        document.querySelectorAll(".slot-pill").forEach(p => p.classList.remove("active"));
+        pill.classList.add("active");
+        currentSlot = parseInt(pill.dataset.slot);
+        try {
+          if (window.Android && window.Android.loadProfile) {
+            window.Android.loadProfile(currentSlot);
+          }
+        } catch (e) {}
+      });
+    });
+
+    // INICIALIZACIÓN
+    window.addEventListener("DOMContentLoaded", () => {
+      renderBands();
+      resizeCanvas();
+
+      setupCrimsonSlider("sliderVolWrap", "fillVol", "thumbVol", "valVol", 0, 100, 100, "%", "volume");
+      setupCrimsonSlider("sliderLimiterWrap", "fillLimiter", "thumbLimiter", "valLimiter", -20, 0, -6, " dB", "limiter", v => v + " dB");
+      setupCrimsonSlider("sliderFilterQWrap", "fillFilterQ", "thumbFilterQ", "valFilterQ", 5, 30, 10, "x", "filterQ", v => (v / 10).toFixed(1) + "x");
+      setupCrimsonSlider("sliderBalanceWrap", "fillBalance", "thumbBalance", "valBalance", -50, 50, 0, "", "balance", v => v === 0 ? "C" : (v < 0 ? `L${Math.abs(v)}` : `R${v}`));
+
+      // Sincronizar Sala 5 inicial
+      try {
+        if (window.Android && window.Android.updateAtmosphere) {
+          window.Android.updateAtmosphere(5, 10);
+        }
+      } catch (e) {}
+    });
+  </script>
+</body>
+</html>
