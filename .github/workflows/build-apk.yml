@@ -1,4 +1,4 @@
-name: Compilar APK SoundAlive Lite
+name: Compilar APK SoundAlive Pro
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platforms;android-34 platforms;android-35 build-tools;34.0.0 build-tools;35.0.0'
+          packages: 'platforms;android-34 build-tools;34.0.0'
           accept-android-sdk-licenses: true
 
       - name: Instalar dependencias
@@ -48,13 +48,13 @@ jobs:
           ./gradlew assembleRelease --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon --stacktrace
           cd ..
           mkdir -p output_apk
-          find android/app/build/outputs/apk -name "*.apk" -not -name "*unsigned*" -exec cp {} output_apk/SoundAlive-Lite.apk \;
-          if [ ! -f output_apk/SoundAlive-Lite.apk ]; then
-            find android/app/build/outputs/apk -name "*.apk" -exec cp {} output_apk/SoundAlive-Lite.apk \;
+          find android/app/build/outputs/apk -name "*.apk" -not -name "*unsigned*" -exec cp {} output_apk/SoundAlive-Pro.apk \;
+          if [ ! -f output_apk/SoundAlive-Pro.apk ]; then
+            find android/app/build/outputs/apk -name "*.apk" -exec cp {} output_apk/SoundAlive-Pro.apk \;
           fi
 
-      - name: Subir APK SoundAlive Lite
+      - name: Subir APK SoundAlive Pro
         uses: actions/upload-artifact@v4
         with:
-          name: SoundAlive-Lite
-          path: output_apk/SoundAlive-Lite.apk
+          name: SoundAlive-Pro
+          path: output_apk/SoundAlive-Pro.apk
