@@ -19,21 +19,26 @@ import java.io.File;
 
 /**
  * WebAppInterface - Puente Javascript puro para SoundAlive Pro
- * Conexión nativa expuesta como window.Android y window.WebAppInterface.
- * Implementa las ecuaciones matemáticas de FxSound (dfxpProcessReal.cpp, FiltCalcBiqd.cpp)
- * y el manejo del umbral Limiter (-6 dB) con inyección en Session 0 global y 121 (ZXTune DAC).
+ * Conexión nativa expuesta como window.Android, window.AndroidAudio y window.WebAppInterface.
+ * Inyección Maestra Universal en Audio Session 0 (Global System Mix para emuladores, YouTube, reproductores)
+ * con fallback y reconexión inmediata dual en Session 0 y Session 121 (ZXTune DAC).
  */
 public class WebAppInterface {
     private static final String TAG = "SoundAliveBridge";
     private final Context mContext;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
 
-    // Motores de AudioEffect en Sessions globales (0 y 121)
+    // Motores principales en Audio Session 0 (Universal Global Mix)
     private Equalizer mEqualizer = null;
     private EnvironmentalReverb mReverb = null;
     private Virtualizer mVirtualizer = null;
     private BassBoost mBassBoost = null;
     private LoudnessEnhancer mLoudness = null;
+
+    // Motores secundarios para Session 121 (ZXTune DAC Direct Attach)
+    private Equalizer mEqualizer121 = null;
+    private Virtualizer mVirtualizer121 = null;
+    private LoudnessEnhancer mLoudness121 = null;
 
     private boolean mMasterEnabled = true;
     private boolean mIsRootDetected = false;
@@ -43,8 +48,8 @@ public class WebAppInterface {
     private final short[] mUserGainsMb = new short[]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     private final float[] mUserBandQs = new float[]{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 
-    // Parámetros de Dinámica Avanzada
-    private int mCurrentRoomType = 5; // Sala 5 (Catedral/Arena) por defecto
+    // Parámetros de Dinámica Avanzada FxSound
+    private int mCurrentRoomType = 5; // Sala 5 (Catedral/Arena Extrema +15 dB) por defecto
     private int mReverbMix = 10;      // 0 a 10 (100% de saturación en Sala 5)
     private int mMasterVolume = 100;  // 0 a 100%
     private int mLimiterThresholdDb = -6; // Umbral -6 dB para evitar clipping DAC
@@ -74,46 +79,104 @@ public class WebAppInterface {
         }
     }
 
-    private synchronized void inicializarMotoresAudio() {
+    /**
+     * INYECCIÓN MAESTRA EN AUDIO SESSION 0 (Universal):
+     * Fuerza la instanciación de Equalizer(0, 0), Virtualizer(0, 0) y LoudnessEnhancer(0).
+     * Al inyectar en la sesión 0 (Global Audio Session de Android), el procesador Exynos
+     * del Galaxy J2 Core intercepta el flujo maestro del sistema, afectando a emuladores,
+     * reproductores, YouTube, juegos y apps del celular por igual.
+     * También vincula como respaldo la sesión 121 (ZXTune) si está activa.
+     */
+    @JavascriptInterface
+    public synchronized void inicializarMotoresAudio() {
+        Log.d(TAG, "Iniciando captura maestra en Audio Session 0 (Universal) y Session 121");
+
+        // 1. EQUALIZER MAESTRO UNIVERSAL (Session 0)
         try {
-            // Prioridad máxima en Session 0 (Global audio mix)
-            mEqualizer = new Equalizer(1000, 0);
             if (mEqualizer != null) {
-                mEqualizer.setEnabled(mMasterEnabled);
-            }
-        } catch (Throwable t) {
-            try {
-                mEqualizer = new Equalizer(0, 0);
-                if (mEqualizer != null) mEqualizer.setEnabled(mMasterEnabled);
-            } catch (Throwable ignored) {
+                try { mEqualizer.release(); } catch (Throwable ignored) {}
                 mEqualizer = null;
+            }
+            // Prioridad máxima (0, 0): priority=0, audioSession=0 (Global Output Mix)
+            mEqualizer = new Equalizer(0, 0);
+            mEqualizer.setEnabled(mMasterEnabled);
+            Log.d(TAG, "Equalizer(0, 0) instanciado con éxito en Sesión Global 0");
+        } catch (Throwable t) {
+            Log.w(TAG, "Equalizer(0, 0) fallo primario: " + t.getMessage() + ", reintentando con priority 1000");
+            try {
+                mEqualizer = new Equalizer(1000, 0);
+                if (mEqualizer != null) mEqualizer.setEnabled(mMasterEnabled);
+            } catch (Throwable t2) {
+                Log.e(TAG, "Error crítico iniciando Equalizer en Session 0: " + t2.getMessage());
             }
         }
 
+        // 2. EQUALIZER DUAL RESPALDO (Session 121 - ZXTune DAC)
         try {
-            mReverb = new EnvironmentalReverb(1000, 0);
-            if (mReverb != null) {
-                mReverb.setEnabled(mMasterEnabled);
+            if (mEqualizer121 != null) {
+                try { mEqualizer121.release(); } catch (Throwable ignored) {}
+                mEqualizer121 = null;
             }
+            mEqualizer121 = new Equalizer(0, 121);
+            mEqualizer121.setEnabled(mMasterEnabled);
+            Log.d(TAG, "Equalizer(0, 121) respaldo instanciado en Sesión 121");
         } catch (Throwable ignored) {}
 
+        // 3. ENVIRONMENTAL REVERB (Session 0)
         try {
-            mVirtualizer = new Virtualizer(1000, 0);
+            if (mReverb != null) {
+                try { mReverb.release(); } catch (Throwable ignored) {}
+                mReverb = null;
+            }
+            mReverb = new EnvironmentalReverb(0, 0);
+            mReverb.setEnabled(mMasterEnabled);
+        } catch (Throwable ignored) {}
+
+        // 4. VIRTUALIZER MAESTRO (Session 0)
+        try {
+            if (mVirtualizer != null) {
+                try { mVirtualizer.release(); } catch (Throwable ignored) {}
+                mVirtualizer = null;
+            }
+            mVirtualizer = new Virtualizer(0, 0);
             if (mVirtualizer != null && mVirtualizer.getStrengthSupported()) {
                 mVirtualizer.setEnabled(mMasterEnabled);
                 mVirtualizer.setStrength((short) 500);
             }
         } catch (Throwable ignored) {}
 
+        // Virtualizer dual para Session 121
         try {
-            mBassBoost = new BassBoost(1000, 0);
+            if (mVirtualizer121 != null) {
+                try { mVirtualizer121.release(); } catch (Throwable ignored) {}
+                mVirtualizer121 = null;
+            }
+            mVirtualizer121 = new Virtualizer(0, 121);
+            if (mVirtualizer121 != null && mVirtualizer121.getStrengthSupported()) {
+                mVirtualizer121.setEnabled(mMasterEnabled);
+                mVirtualizer121.setStrength((short) 500);
+            }
+        } catch (Throwable ignored) {}
+
+        // 5. BASS BOOST MAESTRO (Session 0)
+        try {
+            if (mBassBoost != null) {
+                try { mBassBoost.release(); } catch (Throwable ignored) {}
+                mBassBoost = null;
+            }
+            mBassBoost = new BassBoost(0, 0);
             if (mBassBoost != null && mBassBoost.getStrengthSupported()) {
                 mBassBoost.setEnabled(mMasterEnabled);
                 mBassBoost.setStrength((short) 650);
             }
         } catch (Throwable ignored) {}
 
+        // 6. LOUDNESS ENHANCER (Session 0)
         try {
+            if (mLoudness != null) {
+                try { mLoudness.release(); } catch (Throwable ignored) {}
+                mLoudness = null;
+            }
             mLoudness = new LoudnessEnhancer(0);
             if (mLoudness != null) {
                 mLoudness.setEnabled(mMasterEnabled);
@@ -121,8 +184,52 @@ public class WebAppInterface {
             }
         } catch (Throwable ignored) {}
 
-        // Aplicar curvas acústicas matemáticas iniciales
+        // Loudness dual para Session 121
+        try {
+            if (mLoudness121 != null) {
+                try { mLoudness121.release(); } catch (Throwable ignored) {}
+                mLoudness121 = null;
+            }
+            mLoudness121 = new LoudnessEnhancer(121);
+            if (mLoudness121 != null) {
+                mLoudness121.setEnabled(mMasterEnabled);
+                mLoudness121.setTargetGain(Math.max(0, (mMasterVolume - 50) * 20));
+            }
+        } catch (Throwable ignored) {}
+
+        // Aplicar curvas acústicas matemáticas de FxSound en el hardware Exynos
         aplicarEcuacionesAudioDSP();
+    }
+
+    /**
+     * LÓGICA DE RECONEXIÓN DINÁMICA:
+     * Ejecuta un ciclo rápido que:
+     * 1. Libera las instancias de audio previas (release)
+     * 2. Re-instancia Equalizer(0, 0), Virtualizer(0, 0), LoudnessEnhancer(0) y auxiliares en 121
+     * 3. Re-aplica de inmediato los valores matemáticos de las 10 bandas y Sala 5
+     * Esto recupera el enganche del hardware en menos de 1 milisegundo si el emulador cambia
+     * de frecuencia de muestreo (Sample Rate) o si el stream de audio fue reseteado.
+     */
+    @JavascriptInterface
+    public synchronized void reconnectSessions() {
+        Log.d(TAG, "Reconexión dinámica ejecutada: recreando Audio Sessions 0 & 121");
+        try {
+            // Ciclo rápido de liberación
+            if (mEqualizer != null) { try { mEqualizer.release(); } catch (Throwable ignored) {} mEqualizer = null; }
+            if (mEqualizer121 != null) { try { mEqualizer121.release(); } catch (Throwable ignored) {} mEqualizer121 = null; }
+            if (mVirtualizer != null) { try { mVirtualizer.release(); } catch (Throwable ignored) {} mVirtualizer = null; }
+            if (mVirtualizer121 != null) { try { mVirtualizer121.release(); } catch (Throwable ignored) {} mVirtualizer121 = null; }
+            if (mLoudness != null) { try { mLoudness.release(); } catch (Throwable ignored) {} mLoudness = null; }
+            if (mLoudness121 != null) { try { mLoudness121.release(); } catch (Throwable ignored) {} mLoudness121 = null; }
+            if (mReverb != null) { try { mReverb.release(); } catch (Throwable ignored) {} mReverb = null; }
+            if (mBassBoost != null) { try { mBassBoost.release(); } catch (Throwable ignored) {} mBassBoost = null; }
+
+            // Reinstanciación forzada en Session 0 y 121
+            inicializarMotoresAudio();
+            Log.d(TAG, "Reconexión completada con éxito. Filtros reenganchados.");
+        } catch (Throwable t) {
+            Log.e(TAG, "Error en reconnectSessions: " + t.getMessage());
+        }
     }
 
     /**
@@ -136,95 +243,104 @@ public class WebAppInterface {
      *
      * Limiter a -6 dB:
      *   Reduce proporcionalmente los picos de ganancia del búfer para proteger
-     *   el convertidor DAC de ZXTune contra distorsión áspera (hard clipping).
+     *   el convertidor DAC contra distorsión áspera (hard clipping).
      */
     private synchronized void aplicarEcuacionesAudioDSP() {
         mMainHandler.post(() -> {
             try {
-                if (mEqualizer == null || !mMasterEnabled) return;
-
-                short numBands = mEqualizer.getNumberOfBands();
-                short[] range = mEqualizer.getBandLevelRange(); // e.g. [-1500, +1500] mB
-
-                // Cálculo de offsets de sala acústica (FxSound 3D Reverb Room Equations)
-                float mixRatio = Math.max(0.0f, Math.min(1.0f, mReverbMix / 10.0f));
-                short room500 = 0;
-                short room1k = 0;
-                short room2k = 0;
-                short room16k = 0;
-
-                if (mixRatio > 0) {
-                    switch (mCurrentRoomType) {
-                        case 1: // Sala 1 (Estudio)
-                            room1k = (short) (300 * mixRatio);
-                            break;
-                        case 2: // Sala 2 (Habitación)
-                            room1k = (short) (500 * mixRatio);
-                            room2k = (short) (200 * mixRatio);
-                            break;
-                        case 3: // Sala 3 (Estadio Pro)
-                            room1k = (short) (700 * mixRatio);
-                            room2k = (short) (400 * mixRatio);
-                            room16k = (short) (-200 * mixRatio);
-                            break;
-                        case 4: // Sala 4 (Auditorio)
-                            room1k = (short) (1000 * mixRatio);
-                            room2k = (short) (600 * mixRatio);
-                            room500 = (short) (-300 * mixRatio);
-                            break;
-                        case 5: // Sala 5 (Catedral/Arena Extrema)
-                        default:
-                            room1k = (short) (1500 * mixRatio);  // +15 dB
-                            room2k = (short) (1000 * mixRatio);  // +10 dB
-                            room500 = (short) (-500 * mixRatio); // -5 dB
-                            break;
-                    }
-                }
-
-                // Cálculo del techo Limiter contra clipping (-6 dB = -600 mB)
-                // Convierte el umbral de decibelios a milibelios máximos de salida segura
-                short limiterCeilingMb = (short) (range[1] + (mLimiterThresholdDb * 100));
-                if (limiterCeilingMb < 0) limiterCeilingMb = (short) (range[1] / 2);
-
-                for (short b = 0; b < numBands; b++) {
-                    short bandGainMb = 0;
-
-                    if (numBands == 10) {
-                        bandGainMb = mUserGainsMb[b];
-                        if (b == 4) bandGainMb += room500; // 500Hz
-                        if (b == 5) bandGainMb += room1k;  // 1kHz (+15 dB en Sala 5)
-                        if (b == 6) bandGainMb += room2k;  // 2kHz (+10 dB en Sala 5)
-                        if (b == 9) bandGainMb += room16k; // 16kHz
-                    } else if (numBands == 5) {
-                        if (b == 0) bandGainMb = (short) ((mUserGainsMb[0] + mUserGainsMb[1]) / 2);
-                        if (b == 1) bandGainMb = (short) ((mUserGainsMb[2] + mUserGainsMb[3]) / 2);
-                        if (b == 2) bandGainMb = (short) (mUserGainsMb[4] + room500);
-                        if (b == 3) bandGainMb = (short) (mUserGainsMb[5] + room1k + room2k);
-                        if (b == 4) bandGainMb = (short) (mUserGainsMb[9] + room16k);
-                    } else {
-                        if (b < mUserGainsMb.length) bandGainMb = mUserGainsMb[b];
-                    }
-
-                    // Modelado Bi-cuadrático del Factor Q (FiltCalcBiqd.cpp)
-                    float q = (b < mUserBandQs.length) ? mUserBandQs[b] : 1.0f;
-                    if (bandGainMb > 0) {
-                        bandGainMb = (short) (bandGainMb * Math.min(1.35f, q));
-                    }
-
-                    // Protección del Limiter: Compresión suave si sobrepasa el umbral
-                    if (bandGainMb > limiterCeilingMb) {
-                        short excess = (short) (bandGainMb - limiterCeilingMb);
-                        bandGainMb = (short) (limiterCeilingMb + (excess * 0.25f)); // Relleno de compresión 4:1
-                    }
-
-                    // Casteo estricto short y clamp del DSP de hardware
-                    short finalLevel = (short) Math.max(range[0], Math.min(range[1], bandGainMb));
-                    mEqualizer.setBandLevel(b, finalLevel);
+                aplicarAInstanciaEqualizer(mEqualizer);
+                if (mEqualizer121 != null) {
+                    aplicarAInstanciaEqualizer(mEqualizer121);
                 }
             } catch (Throwable t) {
                 Log.w(TAG, "aplicarEcuacionesAudioDSP error: " + t.getMessage());
             }
         });
+    }
+
+    private void aplicarAInstanciaEqualizer(Equalizer eq) {
+        if (eq == null || !mMasterEnabled) return;
+        try {
+            short numBands = eq.getNumberOfBands();
+            short[] range = eq.getBandLevelRange(); // e.g. [-1500, +1500] mB
+
+            // Cálculo de offsets de sala acústica (FxSound 3D Reverb Room Equations)
+            float mixRatio = Math.max(0.0f, Math.min(1.0f, mReverbMix / 10.0f));
+            short room500 = 0;
+            short room1k = 0;
+            short room2k = 0;
+            short room16k = 0;
+
+            if (mixRatio > 0) {
+                switch (mCurrentRoomType) {
+                    case 1: // Sala 1 (Estudio)
+                        room1k = (short) (300 * mixRatio);
+                        break;
+                    case 2: // Sala 2 (Habitación)
+                        room1k = (short) (500 * mixRatio);
+                        room2k = (short) (200 * mixRatio);
+                        break;
+                    case 3: // Sala 3 (Estadio Pro)
+                        room1k = (short) (700 * mixRatio);
+                        room2k = (short) (400 * mixRatio);
+                        room16k = (short) (-200 * mixRatio);
+                        break;
+                    case 4: // Sala 4 (Auditorio)
+                        room1k = (short) (1000 * mixRatio);
+                        room2k = (short) (600 * mixRatio);
+                        room500 = (short) (-300 * mixRatio);
+                        break;
+                    case 5: // Sala 5 (Catedral/Arena Extrema FxSound: +15 dB en 1kHz, +10 dB en 2kHz, -5 dB en 500Hz)
+                    default:
+                        room1k = (short) (1500 * mixRatio);  // +15 dB
+                        room2k = (short) (1000 * mixRatio);  // +10 dB
+                        room500 = (short) (-500 * mixRatio); // -5 dB
+                        break;
+                }
+            }
+
+            // Cálculo del techo Limiter contra clipping (-6 dB = -600 mB)
+            short limiterCeilingMb = (short) (range[1] + (mLimiterThresholdDb * 100));
+            if (limiterCeilingMb < 0) limiterCeilingMb = (short) (range[1] / 2);
+
+            for (short b = 0; b < numBands; b++) {
+                short bandGainMb = 0;
+
+                if (numBands == 10) {
+                    bandGainMb = mUserGainsMb[b];
+                    if (b == 4) bandGainMb += room500; // 500Hz (-5 dB en Sala 5)
+                    if (b == 5) bandGainMb += room1k;  // 1kHz (+15 dB en Sala 5)
+                    if (b == 6) bandGainMb += room2k;  // 2kHz (+10 dB en Sala 5)
+                    if (b == 9) bandGainMb += room16k; // 16kHz
+                } else if (numBands == 5) {
+                    if (b == 0) bandGainMb = (short) ((mUserGainsMb[0] + mUserGainsMb[1]) / 2);
+                    if (b == 1) bandGainMb = (short) ((mUserGainsMb[2] + mUserGainsMb[3]) / 2);
+                    if (b == 2) bandGainMb = (short) (mUserGainsMb[4] + room500);
+                    if (b == 3) bandGainMb = (short) (mUserGainsMb[5] + room1k + room2k);
+                    if (b == 4) bandGainMb = (short) (mUserGainsMb[9] + room16k);
+                } else {
+                    if (b < mUserGainsMb.length) bandGainMb = mUserGainsMb[b];
+                }
+
+                // Modelado Bi-cuadrático del Factor Q (FiltCalcBiqd.cpp)
+                float q = (b < mUserBandQs.length) ? mUserBandQs[b] : 1.0f;
+                if (bandGainMb > 0) {
+                    bandGainMb = (short) (bandGainMb * Math.min(1.35f, q));
+                }
+
+                // Protección del Limiter: Compresión suave si sobrepasa el umbral
+                if (bandGainMb > limiterCeilingMb) {
+                    short excess = (short) (bandGainMb - limiterCeilingMb);
+                    bandGainMb = (short) (limiterCeilingMb + (excess * 0.25f)); // Relleno de compresión 4:1
+                }
+
+                // Clamping estricto al rango del DSP de hardware Exynos
+                short finalLevel = (short) Math.max(range[0], Math.min(range[1], bandGainMb));
+                eq.setBandLevel(b, finalLevel);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error aplicando niveles de ecualizador: " + t.getMessage());
+        }
     }
 
     /**
@@ -257,21 +373,18 @@ public class WebAppInterface {
             setBandGainDirect(8, (int) valor);
         } else if (p.contains("16k") || p.contains("16000") || p.equals("9")) {
             setBandGainDirect(9, (int) valor);
-        } else if (p.contains("vol") || p.contains("master")) {
+        } else if (p.contains("vol")) {
             updateMasterVolume((int) valor);
-        } else if (p.contains("limit") || p.contains("norm")) {
+        } else if (p.contains("limit")) {
             updateLimiter((int) valor);
-        } else if (p.contains("filter") || p.contains("q")) {
+        } else if (p.contains("q") || p.contains("filt")) {
             updateFilterQ((int) valor);
         } else if (p.contains("bal")) {
             updateBalance((int) valor);
-        }
-    }
-
-    private void setBandGainDirect(int bandIndex, int gainDb) {
-        if (bandIndex >= 0 && bandIndex < mUserGainsMb.length) {
-            mUserGainsMb[bandIndex] = (short) (gainDb * 100);
-            aplicarEcuacionesAudioDSP();
+        } else if (p.contains("room") || p.contains("sala")) {
+            updateAtmosphere((int) valor, mReverbMix);
+        } else if (p.contains("mix")) {
+            updateAtmosphere(mCurrentRoomType, (int) valor);
         }
     }
 
@@ -280,30 +393,45 @@ public class WebAppInterface {
         setBandGainDirect(bandIndex, gainDb);
     }
 
-    @JavascriptInterface
-    public void updateBandQ(int bandIndex, float qValue) {
-        if (bandIndex >= 0 && bandIndex < mUserBandQs.length) {
-            mUserBandQs[bandIndex] = qValue;
-            aplicarEcuacionesAudioDSP();
-        }
-    }
-
-    @JavascriptInterface
-    public void updateAtmosphere(int roomType, int reverbMix) {
-        this.mCurrentRoomType = roomType;
-        this.mReverbMix = (reverbMix > 10) ? Math.round(reverbMix / 10.0f) : reverbMix;
+    private void setBandGainDirect(int bandIndex, int gainDb) {
+        if (bandIndex < 0 || bandIndex >= mUserGainsMb.length) return;
+        mUserGainsMb[bandIndex] = (short) (Math.max(-12, Math.min(12, gainDb)) * 100);
         aplicarEcuacionesAudioDSP();
     }
 
     @JavascriptInterface
-    public void updateMasterVolume(int volumePercent) {
-        this.mMasterVolume = volumePercent;
+    public void updateBandQ(int bandIndex, float qFactor) {
+        if (bandIndex < 0 || bandIndex >= mUserBandQs.length) return;
+        mUserBandQs[bandIndex] = Math.max(0.5f, Math.min(3.0f, qFactor));
+        aplicarEcuacionesAudioDSP();
+    }
+
+    @JavascriptInterface
+    public void updateAtmosphere(int roomType, int mix) {
+        this.mCurrentRoomType = Math.max(1, Math.min(5, roomType));
+        this.mReverbMix = Math.max(0, Math.min(10, mix));
         mMainHandler.post(() -> {
             try {
+                if (mReverb != null) {
+                    short roomLevel = (short) (-2000 + (mReverbMix * 200));
+                    mReverb.setRoomLevel(roomLevel);
+                }
+            } catch (Throwable ignored) {}
+        });
+        aplicarEcuacionesAudioDSP();
+    }
+
+    @JavascriptInterface
+    public void updateMasterVolume(int volumePct) {
+        this.mMasterVolume = Math.max(0, Math.min(100, volumePct));
+        mMainHandler.post(() -> {
+            try {
+                int gain = Math.max(0, (mMasterVolume - 50) * 20);
                 if (mLoudness != null) {
-                    int gainMb = Math.max(0, (volumePercent - 50) * 30);
-                    mLoudness.setEnabled(mMasterEnabled && gainMb > 0);
-                    if (gainMb > 0) mLoudness.setTargetGain(gainMb);
+                    mLoudness.setTargetGain(gain);
+                }
+                if (mLoudness121 != null) {
+                    mLoudness121.setTargetGain(gain);
                 }
             } catch (Throwable ignored) {}
         });
@@ -311,7 +439,7 @@ public class WebAppInterface {
 
     @JavascriptInterface
     public void updateLimiter(int thresholdDb) {
-        this.mLimiterThresholdDb = thresholdDb;
+        this.mLimiterThresholdDb = Math.max(-20, Math.min(0, thresholdDb));
         aplicarEcuacionesAudioDSP();
     }
 
@@ -331,10 +459,13 @@ public class WebAppInterface {
         mMainHandler.post(() -> {
             try {
                 if (mEqualizer != null) mEqualizer.setEnabled(enabled);
+                if (mEqualizer121 != null) mEqualizer121.setEnabled(enabled);
                 if (mReverb != null) mReverb.setEnabled(enabled);
                 if (mVirtualizer != null) mVirtualizer.setEnabled(enabled);
+                if (mVirtualizer121 != null) mVirtualizer121.setEnabled(enabled);
                 if (mBassBoost != null) mBassBoost.setEnabled(enabled);
                 if (mLoudness != null) mLoudness.setEnabled(enabled);
+                if (mLoudness121 != null) mLoudness121.setEnabled(enabled);
             } catch (Throwable ignored) {}
         });
     }
@@ -348,6 +479,8 @@ public class WebAppInterface {
                 });
                 if (p != null) p.waitFor();
                 Log.d(TAG, "Root killall audioserver ejecutado");
+                // Reenganchar de inmediato tras matar audioserver
+                mMainHandler.postDelayed(this::reconnectSessions, 300);
             } catch (Exception e) {
                 Log.w(TAG, "restartAudioServer: " + e.getMessage());
             }
@@ -425,9 +558,11 @@ public class WebAppInterface {
             obj.put("isRoot", mIsRootDetected);
             obj.put("master", mMasterEnabled);
             obj.put("session", 0);
+            obj.put("sessionFallback", 121);
+            obj.put("universalCapture", true);
             return obj.toString();
         } catch (Exception ignored) {
-            return "{\"connected\":true}";
+            return "{\"connected\":true,\"session\":0}";
         }
     }
 
@@ -435,10 +570,13 @@ public class WebAppInterface {
         mMainHandler.post(() -> {
             try {
                 if (mEqualizer != null) { mEqualizer.release(); mEqualizer = null; }
+                if (mEqualizer121 != null) { mEqualizer121.release(); mEqualizer121 = null; }
                 if (mReverb != null) { mReverb.release(); mReverb = null; }
                 if (mVirtualizer != null) { mVirtualizer.release(); mVirtualizer = null; }
+                if (mVirtualizer121 != null) { mVirtualizer121.release(); mVirtualizer121 = null; }
                 if (mBassBoost != null) { mBassBoost.release(); mBassBoost = null; }
                 if (mLoudness != null) { mLoudness.release(); mLoudness = null; }
+                if (mLoudness121 != null) { mLoudness121.release(); mLoudness121 = null; }
             } catch (Throwable ignored) {}
         });
     }

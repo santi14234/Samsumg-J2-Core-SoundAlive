@@ -801,8 +801,9 @@ export default function App() {
             <div className="space-y-2">
               <button
                 onClick={() => {
+                  callNative('reconnectSessions');
                   callNative('inicializarMotoresAudio');
-                  setRootStatusLog('Motores de audio reinicializados en sesiones 0 y 121.');
+                  setRootStatusLog('Ciclo ultrarrápido: Motores reinicializados en Session 0 (Universal) y Session 121 (ZXTune).');
                 }}
                 className="w-full py-2 bg-[#172030] hover:bg-[#202b40] border border-[#263550] rounded-lg text-xs font-semibold text-cyan-400 flex items-center justify-center space-x-2"
               >
