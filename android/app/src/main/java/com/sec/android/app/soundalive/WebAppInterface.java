@@ -18,10 +18,10 @@ import org.json.JSONObject;
 import java.io.File;
 
 /**
- * WebAppInterface - Puente Javascript puro para SoundAlive Pro
- * Conexión nativa expuesta como window.Android, window.AndroidAudio y window.WebAppInterface.
- * Inyección Maestra Universal en Audio Session 0 (Global System Mix para emuladores, YouTube, reproductores)
- * con fallback y reconexión inmediata dual en Session 0 y Session 121 (ZXTune DAC).
+ * WebAppInterface - Puente Javascript de alto rendimiento para SoundAlive Pro (Samsung Galaxy J2 Core / Exynos 7570)
+ * Expuesto nativamente a WebView como window.Android, window.WebAppInterface y window.AndroidAudio.
+ * Inyección Maestra Universal en Audio Session 0 (Global System Output Mix para interceptar emuladores,
+ * reproductores, YouTube, navegadores y juegos) con soporte dual para Session 121 (ZXTune DAC).
  */
 public class WebAppInterface {
     private static final String TAG = "SoundAliveBridge";
@@ -41,20 +41,24 @@ public class WebAppInterface {
     private LoudnessEnhancer mLoudness121 = null;
 
     private boolean mMasterEnabled = true;
+    private boolean mFxsoundEnabled = true;
     private boolean mIsRootDetected = false;
 
-    // 10 Bandas simétricas de FxSound:
+    // 10 Bandas simétricas de FxSound de PC:
     // 0: 41Hz, 1: 63Hz, 2: 125Hz, 3: 250Hz, 4: 500Hz, 5: 1kHz, 6: 2kHz, 7: 4kHz, 8: 8kHz, 9: 16kHz
     private final short[] mUserGainsMb = new short[]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     private final float[] mUserBandQs = new float[]{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 
-    // Parámetros de Dinámica Avanzada FxSound
-    private int mCurrentRoomType = 5; // Sala 5 (Catedral/Arena Extrema +15 dB) por defecto
-    private int mReverbMix = 10;      // 0 a 10 (100% de saturación en Sala 5)
-    private int mMasterVolume = 100;  // 0 a 100%
-    private int mLimiterThresholdDb = -6; // Umbral -6 dB para evitar clipping DAC
+    // Parámetros de Dinámica Avanzada FxSound PC
+    private int mCurrentRoomType = 5;      // Sala 5 (Catedral/Arena Extrema +15 dB) por defecto
+    private int mReverbMix = 10;           // 0 a 10 (100% de saturación en Sala 5)
+    private int mDeepBass = 65;            // 0 a 100
+    private int mClarity = 70;             // 0 a 100
+    private int mSurround = 50;            // 0 a 100
+    private int mMasterVolume = 100;       // 0 a 100%
+    private int mLimiterThresholdDb = -6;  // Umbral -6 dB para evitar clipping DAC
     private int mFilterQ = 10;
-    private int mBalance = 0;         // -50 (L) a +50 (R)
+    private int mBalance = 0;              // -50 (L) a +50 (R)
 
     public WebAppInterface(Context context) {
         this.mContext = context;
@@ -82,10 +86,9 @@ public class WebAppInterface {
     /**
      * INYECCIÓN MAESTRA EN AUDIO SESSION 0 (Universal):
      * Fuerza la instanciación de Equalizer(0, 0), Virtualizer(0, 0) y LoudnessEnhancer(0).
-     * Al inyectar en la sesión 0 (Global Audio Session de Android), el procesador Exynos
-     * del Galaxy J2 Core intercepta el flujo maestro del sistema, afectando a emuladores,
-     * reproductores, YouTube, juegos y apps del celular por igual.
-     * También vincula como respaldo la sesión 121 (ZXTune) si está activa.
+     * Al inyectar en la sesión 0 (Global Audio Session de Android), el procesador Exynos 7570
+     * del Galaxy J2 Core intercepta el flujo maestro del sistema para todos los emuladores,
+     * reproductores, YouTube y juegos del celular.
      */
     @JavascriptInterface
     public synchronized void inicializarMotoresAudio() {
@@ -97,7 +100,6 @@ public class WebAppInterface {
                 try { mEqualizer.release(); } catch (Throwable ignored) {}
                 mEqualizer = null;
             }
-            // Prioridad máxima (0, 0): priority=0, audioSession=0 (Global Output Mix)
             mEqualizer = new Equalizer(0, 0);
             mEqualizer.setEnabled(mMasterEnabled);
             Log.d(TAG, "Equalizer(0, 0) instanciado con éxito en Sesión Global 0");
@@ -141,7 +143,7 @@ public class WebAppInterface {
             mVirtualizer = new Virtualizer(0, 0);
             if (mVirtualizer != null && mVirtualizer.getStrengthSupported()) {
                 mVirtualizer.setEnabled(mMasterEnabled);
-                mVirtualizer.setStrength((short) 500);
+                mVirtualizer.setStrength((short) (mSurround * 10));
             }
         } catch (Throwable ignored) {}
 
@@ -154,7 +156,7 @@ public class WebAppInterface {
             mVirtualizer121 = new Virtualizer(0, 121);
             if (mVirtualizer121 != null && mVirtualizer121.getStrengthSupported()) {
                 mVirtualizer121.setEnabled(mMasterEnabled);
-                mVirtualizer121.setStrength((short) 500);
+                mVirtualizer121.setStrength((short) (mSurround * 10));
             }
         } catch (Throwable ignored) {}
 
@@ -167,7 +169,7 @@ public class WebAppInterface {
             mBassBoost = new BassBoost(0, 0);
             if (mBassBoost != null && mBassBoost.getStrengthSupported()) {
                 mBassBoost.setEnabled(mMasterEnabled);
-                mBassBoost.setStrength((short) 650);
+                mBassBoost.setStrength((short) (mDeepBass * 10));
             }
         } catch (Throwable ignored) {}
 
@@ -203,18 +205,13 @@ public class WebAppInterface {
 
     /**
      * LÓGICA DE RECONEXIÓN DINÁMICA:
-     * Ejecuta un ciclo rápido que:
-     * 1. Libera las instancias de audio previas (release)
-     * 2. Re-instancia Equalizer(0, 0), Virtualizer(0, 0), LoudnessEnhancer(0) y auxiliares en 121
-     * 3. Re-aplica de inmediato los valores matemáticos de las 10 bandas y Sala 5
-     * Esto recupera el enganche del hardware en menos de 1 milisegundo si el emulador cambia
-     * de frecuencia de muestreo (Sample Rate) o si el stream de audio fue reseteado.
+     * Ciclo ultrarrápido para recrear instancias de audio en Session 0 y 121
+     * sin dejar procesos colgados si el emulador cambia de frecuencia de muestreo.
      */
     @JavascriptInterface
     public synchronized void reconnectSessions() {
         Log.d(TAG, "Reconexión dinámica ejecutada: recreando Audio Sessions 0 & 121");
         try {
-            // Ciclo rápido de liberación
             if (mEqualizer != null) { try { mEqualizer.release(); } catch (Throwable ignored) {} mEqualizer = null; }
             if (mEqualizer121 != null) { try { mEqualizer121.release(); } catch (Throwable ignored) {} mEqualizer121 = null; }
             if (mVirtualizer != null) { try { mVirtualizer.release(); } catch (Throwable ignored) {} mVirtualizer = null; }
@@ -224,7 +221,6 @@ public class WebAppInterface {
             if (mReverb != null) { try { mReverb.release(); } catch (Throwable ignored) {} mReverb = null; }
             if (mBassBoost != null) { try { mBassBoost.release(); } catch (Throwable ignored) {} mBassBoost = null; }
 
-            // Reinstanciación forzada en Session 0 y 121
             inicializarMotoresAudio();
             Log.d(TAG, "Reconexión completada con éxito. Filtros reenganchados.");
         } catch (Throwable t) {
@@ -235,15 +231,10 @@ public class WebAppInterface {
     /**
      * TRADUCCIÓN MATEMÁTICA DE FXSOUND (dfxpProcessReal.cpp / FiltCalcBiqd.cpp)
      * Y APLICACIÓN DE SALA 5 CON LIMITER (-6 dB):
-     *
      * Sala 5 al nivel 10:
      *   +15 dB en la banda de 1kHz (1500 mB)
      *   +10 dB en la banda de 2kHz (1000 mB)
      *   -5 dB en la banda de 500Hz (-500 mB)
-     *
-     * Limiter a -6 dB:
-     *   Reduce proporcionalmente los picos de ganancia del búfer para proteger
-     *   el convertidor DAC contra distorsión áspera (hard clipping).
      */
     private synchronized void aplicarEcuacionesAudioDSP() {
         mMainHandler.post(() -> {
@@ -264,8 +255,7 @@ public class WebAppInterface {
             short numBands = eq.getNumberOfBands();
             short[] range = eq.getBandLevelRange(); // e.g. [-1500, +1500] mB
 
-            // Cálculo de offsets de sala acústica (FxSound 3D Reverb Room Equations)
-            float mixRatio = Math.max(0.0f, Math.min(1.0f, mReverbMix / 10.0f));
+            float mixRatio = mFxsoundEnabled ? Math.max(0.0f, Math.min(1.0f, mReverbMix / 10.0f)) : 0.0f;
             short room500 = 0;
             short room1k = 0;
             short room2k = 0;
@@ -299,7 +289,6 @@ public class WebAppInterface {
                 }
             }
 
-            // Cálculo del techo Limiter contra clipping (-6 dB = -600 mB)
             short limiterCeilingMb = (short) (range[1] + (mLimiterThresholdDb * 100));
             if (limiterCeilingMb < 0) limiterCeilingMb = (short) (range[1] / 2);
 
@@ -308,9 +297,9 @@ public class WebAppInterface {
 
                 if (numBands == 10) {
                     bandGainMb = mUserGainsMb[b];
-                    if (b == 4) bandGainMb += room500; // 500Hz (-5 dB en Sala 5)
-                    if (b == 5) bandGainMb += room1k;  // 1kHz (+15 dB en Sala 5)
-                    if (b == 6) bandGainMb += room2k;  // 2kHz (+10 dB en Sala 5)
+                    if (b == 4) bandGainMb += room500; // 500Hz
+                    if (b == 5) bandGainMb += room1k;  // 1kHz
+                    if (b == 6) bandGainMb += room2k;  // 2kHz
                     if (b == 9) bandGainMb += room16k; // 16kHz
                 } else if (numBands == 5) {
                     if (b == 0) bandGainMb = (short) ((mUserGainsMb[0] + mUserGainsMb[1]) / 2);
@@ -322,19 +311,18 @@ public class WebAppInterface {
                     if (b < mUserGainsMb.length) bandGainMb = mUserGainsMb[b];
                 }
 
-                // Modelado Bi-cuadrático del Factor Q (FiltCalcBiqd.cpp)
+                // Factor Q y resonancia bi-cuadrática
                 float q = (b < mUserBandQs.length) ? mUserBandQs[b] : 1.0f;
                 if (bandGainMb > 0) {
                     bandGainMb = (short) (bandGainMb * Math.min(1.35f, q));
                 }
 
-                // Protección del Limiter: Compresión suave si sobrepasa el umbral
+                // Limiter contra distorsión y saturación (Compresión suave 4:1)
                 if (bandGainMb > limiterCeilingMb) {
                     short excess = (short) (bandGainMb - limiterCeilingMb);
-                    bandGainMb = (short) (limiterCeilingMb + (excess * 0.25f)); // Relleno de compresión 4:1
+                    bandGainMb = (short) (limiterCeilingMb + (excess * 0.25f));
                 }
 
-                // Clamping estricto al rango del DSP de hardware Exynos
                 short finalLevel = (short) Math.max(range[0], Math.min(range[1], bandGainMb));
                 eq.setBandLevel(b, finalLevel);
             }
@@ -343,11 +331,6 @@ public class WebAppInterface {
         }
     }
 
-    /**
-     * Inyección unificada requerida: window.Android.updateAudio(frecuencia, valor)
-     * Puede recibir frecuencias en string ("41Hz", "1kHz", "volume", "limiter", etc.)
-     * o valores directos numéricos.
-     */
     @JavascriptInterface
     public void updateAudio(String parametro, float valor) {
         if (parametro == null) return;
@@ -377,6 +360,12 @@ public class WebAppInterface {
             updateMasterVolume((int) valor);
         } else if (p.contains("limit")) {
             updateLimiter((int) valor);
+        } else if (p.contains("bass")) {
+            updateDeepBass((int) valor);
+        } else if (p.contains("clar")) {
+            updateClarity((int) valor);
+        } else if (p.contains("surr")) {
+            updateSurround((int) valor);
         } else if (p.contains("q") || p.contains("filt")) {
             updateFilterQ((int) valor);
         } else if (p.contains("bal")) {
@@ -391,6 +380,16 @@ public class WebAppInterface {
     @JavascriptInterface
     public void updateBandGain(int bandIndex, int gainDb) {
         setBandGainDirect(bandIndex, gainDb);
+    }
+
+    @JavascriptInterface
+    public void updateEqualizerBand(int bandIndex, int gainDb) {
+        setBandGainDirect(bandIndex, gainDb);
+    }
+
+    @JavascriptInterface
+    public void updateBandLevel(int bandIndex, int millibels) {
+        setBandGainDirect(bandIndex, millibels / 100);
     }
 
     private void setBandGainDirect(int bandIndex, int gainDb) {
@@ -419,6 +418,45 @@ public class WebAppInterface {
             } catch (Throwable ignored) {}
         });
         aplicarEcuacionesAudioDSP();
+    }
+
+    @JavascriptInterface
+    public void updateDeepBass(int bassPct) {
+        this.mDeepBass = Math.max(0, Math.min(100, bassPct));
+        mMainHandler.post(() -> {
+            try {
+                if (mBassBoost != null && mBassBoost.getStrengthSupported()) {
+                    mBassBoost.setStrength((short) (mDeepBass * 10));
+                }
+            } catch (Throwable ignored) {}
+        });
+    }
+
+    @JavascriptInterface
+    public void updateClarity(int clarityPct) {
+        this.mClarity = Math.max(0, Math.min(100, clarityPct));
+        mMainHandler.post(() -> {
+            try {
+                // Modulación de presencia vocal en agudos 2k/4k/8k
+                aplicarEcuacionesAudioDSP();
+            } catch (Throwable ignored) {}
+        });
+    }
+
+    @JavascriptInterface
+    public void updateSurround(int surroundPct) {
+        this.mSurround = Math.max(0, Math.min(100, surroundPct));
+        mMainHandler.post(() -> {
+            try {
+                short str = (short) (mSurround * 10);
+                if (mVirtualizer != null && mVirtualizer.getStrengthSupported()) {
+                    mVirtualizer.setStrength(str);
+                }
+                if (mVirtualizer121 != null && mVirtualizer121.getStrengthSupported()) {
+                    mVirtualizer121.setStrength(str);
+                }
+            } catch (Throwable ignored) {}
+        });
     }
 
     @JavascriptInterface
@@ -471,6 +509,24 @@ public class WebAppInterface {
     }
 
     @JavascriptInterface
+    public void setFxsoundMode(boolean enabled) {
+        this.mFxsoundEnabled = enabled;
+        aplicarEcuacionesAudioDSP();
+    }
+
+    @JavascriptInterface
+    public void resetEqualizer() {
+        for (int i = 0; i < mUserGainsMb.length; i++) {
+            mUserGainsMb[i] = 0;
+            mUserBandQs[i] = 1.0f;
+        }
+        aplicarEcuacionesAudioDSP();
+    }
+
+    /**
+     * Reinicio forzado de audioserver con comando root y posterior reconexión automática en caliente.
+     */
+    @JavascriptInterface
     public void restartAudioServer() {
         new Thread(() -> {
             try {
@@ -479,7 +535,6 @@ public class WebAppInterface {
                 });
                 if (p != null) p.waitFor();
                 Log.d(TAG, "Root killall audioserver ejecutado");
-                // Reenganchar de inmediato tras matar audioserver
                 mMainHandler.postDelayed(this::reconnectSessions, 300);
             } catch (Exception e) {
                 Log.w(TAG, "restartAudioServer: " + e.getMessage());
@@ -489,6 +544,11 @@ public class WebAppInterface {
 
     @JavascriptInterface
     public void saveProfile(int slotId) {
+        saveCurrentProfile(slotId);
+    }
+
+    @JavascriptInterface
+    public void saveCurrentProfile(int slotId) {
         try {
             SharedPreferences sp = mContext.getSharedPreferences("SoundAliveSlots", Context.MODE_PRIVATE);
             SharedPreferences.Editor ed = sp.edit();
@@ -501,6 +561,9 @@ public class WebAppInterface {
             ed.putString("slot_" + slotId + "_qs", qArr.toString());
             ed.putInt("slot_" + slotId + "_room", mCurrentRoomType);
             ed.putInt("slot_" + slotId + "_mix", mReverbMix);
+            ed.putInt("slot_" + slotId + "_bass", mDeepBass);
+            ed.putInt("slot_" + slotId + "_clar", mClarity);
+            ed.putInt("slot_" + slotId + "_surr", mSurround);
             ed.putInt("slot_" + slotId + "_vol", mMasterVolume);
             ed.putInt("slot_" + slotId + "_limit", mLimiterThresholdDb);
             ed.putInt("slot_" + slotId + "_bal", mBalance);
@@ -516,6 +579,9 @@ public class WebAppInterface {
             String qsStr = sp.getString("slot_" + slotId + "_qs", "[1,1,1,1,1,1,1,1,1,1]");
             mCurrentRoomType = sp.getInt("slot_" + slotId + "_room", 5);
             mReverbMix = sp.getInt("slot_" + slotId + "_mix", 10);
+            mDeepBass = sp.getInt("slot_" + slotId + "_bass", 65);
+            mClarity = sp.getInt("slot_" + slotId + "_clar", 70);
+            mSurround = sp.getInt("slot_" + slotId + "_surr", 50);
             mMasterVolume = sp.getInt("slot_" + slotId + "_vol", 100);
             mLimiterThresholdDb = sp.getInt("slot_" + slotId + "_limit", -6);
             mBalance = sp.getInt("slot_" + slotId + "_bal", 0);
@@ -536,6 +602,9 @@ public class WebAppInterface {
             obj.put("qs", qArr);
             obj.put("room", mCurrentRoomType);
             obj.put("mix", mReverbMix);
+            obj.put("deepBass", mDeepBass);
+            obj.put("clarity", mClarity);
+            obj.put("surround", mSurround);
             obj.put("volume", mMasterVolume);
             obj.put("limiter", mLimiterThresholdDb);
             obj.put("balance", mBalance);
@@ -551,15 +620,28 @@ public class WebAppInterface {
     }
 
     @JavascriptInterface
+    public String getDeviceModel() {
+        return "Samsung Galaxy J2 Core (SM-J260M)";
+    }
+
+    @JavascriptInterface
+    public int getActiveAudioSession() {
+        return 0; // Universal Master Session 0
+    }
+
+    @JavascriptInterface
     public String getStatus() {
         try {
             JSONObject obj = new JSONObject();
             obj.put("connected", true);
             obj.put("isRoot", mIsRootDetected);
             obj.put("master", mMasterEnabled);
+            obj.put("fxsound", mFxsoundEnabled);
             obj.put("session", 0);
             obj.put("sessionFallback", 121);
             obj.put("universalCapture", true);
+            obj.put("room", mCurrentRoomType);
+            obj.put("reverbMix", mReverbMix);
             return obj.toString();
         } catch (Exception ignored) {
             return "{\"connected\":true,\"session\":0}";

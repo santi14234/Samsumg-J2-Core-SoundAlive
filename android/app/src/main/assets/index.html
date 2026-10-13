@@ -182,57 +182,50 @@
       align-items: center;
       text-shadow: 0 0 5px rgba(0,255,102,0.6);
     }
-    .fader-track-container {
+    .gain-knob-container {
       flex: 1;
-      width: 22px;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      cursor: ns-resize;
+      margin: 4px 0;
+    }
+    .gain-main-knob {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #3e4451 0%, #2a2a2a 55%, #181c24 100%);
+      border: 1px solid #384252;
+      box-shadow: inset 0 1px 2px rgba(255,255,255,0.15), inset 0 -2px 4px rgba(0,0,0,0.8), 0 3px 6px rgba(0,0,0,0.6);
       position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
       touch-action: none;
-      cursor: pointer;
-      margin: 4px 0;
+      cursor: ns-resize;
     }
-    .fader-groove {
-      width: 4px;
-      height: 100%;
-      background: #172131;
-      border-radius: 2px;
-      position: relative;
-      border: 1px solid #23324a;
-    }
-    .fader-zero-mark {
+    .gain-knob-pointer {
       position: absolute;
-      top: 50%;
-      left: -6px;
-      right: -6px;
-      height: 1px;
-      background: rgba(255,255,255,0.25);
-    }
-    .fader-thumb {
-      position: absolute;
+      width: 3px;
+      height: 14px;
+      background: linear-gradient(180deg, #00f0ff 0%, #007fff 100%);
+      top: 3px;
       left: 50%;
-      width: 20px;
-      height: 28px;
-      transform: translate(-50%, -50%);
-      background: linear-gradient(180deg, #2a374f 0%, #172030 100%);
-      border: 1px solid #00f0ff;
-      border-radius: 4px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.6), 0 0 6px rgba(0,240,255,0.4);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 2px;
+      margin-left: -1.5px;
+      transform-origin: bottom center;
+      border-radius: 2px;
+      box-shadow: 0 0 5px #00f0ff;
       pointer-events: none;
     }
-    .fader-thumb::after {
-      content: '';
+    .gain-knob-cap {
       width: 10px;
-      height: 2px;
-      background: #00f0ff;
-      border-radius: 1px;
-      box-shadow: 0 0 4px #00f0ff;
+      height: 10px;
+      border-radius: 50%;
+      background: #171d28;
+      border: 1px solid #38455a;
+      pointer-events: none;
     }
 
     /* MINI-POTENCIÓMETRO FACTOR Q */
@@ -655,55 +648,58 @@
         dbText.id = "db-val-" + idx;
         dbText.textContent = (eqGains[idx] > 0 ? "+" : "") + eqGains[idx];
 
-        // 2. Fader Vertical
-        const trackWrap = document.createElement("div");
-        trackWrap.className = "fader-track-container";
+        // 2. Perilla Giratoria Circular Gain (#2a2a2a Metálica)
+        const knobWrap = document.createElement("div");
+        knobWrap.className = "gain-knob-container";
 
-        const groove = document.createElement("div");
-        groove.className = "fader-groove";
+        const mainKnob = document.createElement("div");
+        mainKnob.className = "gain-main-knob";
+        mainKnob.id = "gain-knob-" + idx;
 
-        const zeroMark = document.createElement("div");
-        zeroMark.className = "fader-zero-mark";
-        groove.appendChild(zeroMark);
+        const mainPointer = document.createElement("div");
+        mainPointer.className = "gain-knob-pointer";
+        const knobAngle = (eqGains[idx] / 12) * 135;
+        mainPointer.style.transform = `rotate(${knobAngle}deg)`;
+        mainKnob.appendChild(mainPointer);
 
-        const thumb = document.createElement("div");
-        thumb.className = "fader-thumb";
-        thumb.id = "fader-thumb-" + idx;
-        // Mapear ganancia -12..+12 a porcentaje de arriba a abajo (0% = +12, 100% = -12)
-        const topPct = ((12 - eqGains[idx]) / 24) * 100;
-        thumb.style.top = topPct + "%";
+        const knobCap = document.createElement("div");
+        knobCap.className = "gain-knob-cap";
+        mainKnob.appendChild(knobCap);
+        knobWrap.appendChild(mainKnob);
 
-        trackWrap.appendChild(groove);
-        trackWrap.appendChild(thumb);
-
-        // Control táctil vertical estricto para fader (touch-action: none)
-        function handleFaderDrag(clientY) {
-          const rect = trackWrap.getBoundingClientRect();
-          let relY = (clientY - rect.top) / rect.height;
-          relY = Math.max(0, Math.min(1, relY));
-          const gain = Math.round(12 - (relY * 24));
-          if (eqGains[idx] !== gain) {
-            eqGains[idx] = gain;
-            dbText.textContent = (gain > 0 ? "+" : "") + gain;
-            thumb.style.top = ((12 - gain) / 24 * 100) + "%";
-            callNativeAudio(freq, gain);
-            drawSpectrum();
+        function handleGainKnobDrag(startY, initialGain) {
+          function onMove(e) {
+            e.preventDefault();
+            const deltaY = startY - e.clientY;
+            let newGain = Math.round(initialGain + (deltaY / 120) * 24);
+            newGain = Math.max(-12, Math.min(12, newGain));
+            if (eqGains[idx] !== newGain) {
+              eqGains[idx] = newGain;
+              dbText.textContent = (newGain > 0 ? "+" : "") + newGain;
+              const newAngle = (newGain / 12) * 135;
+              mainPointer.style.transform = `rotate(${newAngle}deg)`;
+              callNativeAudio(freq, newGain);
+              drawSpectrum();
+            }
           }
+          function onUp() {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+          }
+          window.addEventListener("pointermove", onMove, { passive: false });
+          window.addEventListener("pointerup", onUp);
         }
 
-        trackWrap.addEventListener("pointerdown", (e) => {
+        knobWrap.addEventListener("pointerdown", (e) => {
           e.preventDefault();
-          handleFaderDrag(e.clientY);
-          function onPointerMove(moveE) {
-            moveE.preventDefault();
-            handleFaderDrag(moveE.clientY);
-          }
-          function onPointerUp() {
-            window.removeEventListener("pointermove", onPointerMove);
-            window.removeEventListener("pointerup", onPointerUp);
-          }
-          window.addEventListener("pointermove", onPointerMove, { passive: false });
-          window.addEventListener("pointerup", onPointerUp);
+          handleGainKnobDrag(e.clientY, eqGains[idx]);
+        });
+        knobWrap.addEventListener("dblclick", () => {
+          eqGains[idx] = 0;
+          dbText.textContent = "0";
+          mainPointer.style.transform = "rotate(0deg)";
+          callNativeAudio(freq, 0);
+          drawSpectrum();
         });
 
         // 3. Mini Potenciómetro Circular Q (giro vertical arriba/abajo)
@@ -768,7 +764,7 @@
         freqLabel.textContent = freq;
 
         col.appendChild(dbText);
-        col.appendChild(trackWrap);
+        col.appendChild(knobWrap);
         col.appendChild(qWrap);
         col.appendChild(freqLabel);
 

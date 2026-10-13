@@ -4,14 +4,17 @@ import {
   RotateCcw,
   Activity,
   Bookmark,
-  RefreshCw,
   Sparkles,
   SlidersHorizontal,
   Volume2,
   ShieldAlert,
   Layers,
   ChevronRight,
-  Download
+  Download,
+  Terminal,
+  RefreshCw,
+  Cpu,
+  Radio
 } from 'lucide-react';
 
 interface Profile {
@@ -30,10 +33,10 @@ interface Profile {
   limiterThreshold: number;
 }
 
-// Global safe Native Bridge caller (supporting window.WebAppInterface & window.AndroidAudio)
+// Global safe Native Bridge caller
 const callNative = (methodName: string, ...args: any[]) => {
   const win = window as any;
-  const bridge = win.WebAppInterface || win.AndroidAudio;
+  const bridge = win.Android || win.WebAppInterface || win.AndroidAudio;
   if (bridge && typeof bridge[methodName] === 'function') {
     try {
       return bridge[methodName](...args);
@@ -45,7 +48,7 @@ const callNative = (methodName: string, ...args: any[]) => {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'eq' | 'fxsound' | 'presets' | 'settings'>('eq');
+  const [activeTab, setActiveTab] = useState<'knobs' | 'fxsound' | 'presets' | 'root'>('knobs');
   const [masterPower, setMasterPower] = useState<boolean>(true);
   const [fxsoundMode, setFxsoundMode] = useState<boolean>(true);
 
@@ -56,47 +59,52 @@ export default function App() {
   // 10 Independent Q-Factors / Resonance Sharpness (0.5x to 3.0x)
   const [eqQValues, setEqQValues] = useState<number[]>([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
 
-  // FxSound DSP Controls
+  // FxSound DSP Controls (Defaults calibrated for Sala 5 Catedral/Arena +15 dB)
   const [deepBass, setDeepBass] = useState<number>(65);
   const [clarity, setClarity] = useState<number>(70);
   const [surround, setSurround] = useState<number>(50);
-  const [reverbPreset, setReverbPreset] = useState<number>(4); // Default: Sala 5 Catedral/Arena
-  const [reverbMix, setReverbMix] = useState<number>(5); // 0 to 10
-  const [masterVolume, setMasterVolume] = useState<number>(0); // -12 to +12 dB
-  const [limiterThreshold, setLimiterThreshold] = useState<number>(-3); // -20 to 0 dB
-  const [balance, setBalance] = useState<number>(0); // -10 to +10
+  const [reverbPreset, setReverbPreset] = useState<number>(5); // Default: Sala 5
+  const [reverbMix, setReverbMix] = useState<number>(10); // Default: 10 (100% Saturation)
+  const [masterVolume, setMasterVolume] = useState<number>(100); // 0 to 100%
+  const [limiterThreshold, setLimiterThreshold] = useState<number>(-6); // -20 to 0 dB (Default: -6 dB)
+  const [balance, setBalance] = useState<number>(0); // -50 to +50
 
   // Profiles (P1 to P7)
   const [currentProfileId, setCurrentProfileId] = useState<number>(1);
   const [profiles, setProfiles] = useState<Profile[]>([
-    { id: 1, name: 'FxSound Reference', gains: [3, 2, 1, 0, 1, 4, 3, 2, 4, 5], qValues: [1.2, 1.0, 1.0, 1.0, 1.1, 1.5, 1.4, 1.2, 1.5, 1.8], masterPower: true, fxsoundMode: true, deepBass: 70, clarity: 75, surround: 60, reverbPreset: 4, reverbMix: 5, masterVolume: 2, limiterThreshold: -3 },
-    { id: 2, name: 'Electronic Boost', gains: [6, 5, 2, -1, -2, 2, 4, 5, 6, 4], qValues: [2.0, 1.8, 1.0, 1.0, 1.0, 1.2, 1.5, 1.8, 2.0, 1.5], masterPower: true, fxsoundMode: true, deepBass: 85, clarity: 80, surround: 70, reverbPreset: 4, reverbMix: 6, masterVolume: 4, limiterThreshold: -2 },
-    { id: 3, name: 'Vocal Presence', gains: [-2, -1, 0, 2, 5, 7, 6, 3, 1, 0], qValues: [1.0, 1.0, 1.0, 1.2, 2.0, 2.5, 2.2, 1.5, 1.0, 1.0], masterPower: true, fxsoundMode: true, deepBass: 40, clarity: 90, surround: 45, reverbPreset: 1, reverbMix: 4, masterVolume: 0, limiterThreshold: -4 },
-    { id: 4, name: 'Rock Stadium', gains: [4, 3, 1, 0, 2, 5, 4, 3, 5, 6], qValues: [1.5, 1.3, 1.0, 1.0, 1.2, 1.8, 1.6, 1.4, 1.8, 2.2], masterPower: true, fxsoundMode: true, deepBass: 65, clarity: 70, surround: 80, reverbPreset: 3, reverbMix: 7, masterVolume: 3, limiterThreshold: -3 },
-    { id: 5, name: 'Deep Bass J2 Core', gains: [8, 7, 4, 1, 0, 1, 2, 1, 2, 3], qValues: [2.5, 2.2, 1.5, 1.0, 1.0, 1.0, 1.1, 1.0, 1.2, 1.3], masterPower: true, fxsoundMode: true, deepBass: 95, clarity: 60, surround: 50, reverbPreset: 4, reverbMix: 5, masterVolume: 5, limiterThreshold: -2 },
-    { id: 6, name: 'Acoustic Pure', gains: [1, 2, 3, 2, 1, 3, 4, 3, 2, 2], qValues: [1.0, 1.1, 1.2, 1.1, 1.0, 1.3, 1.5, 1.3, 1.1, 1.1], masterPower: true, fxsoundMode: true, deepBass: 30, clarity: 85, surround: 40, reverbPreset: 0, reverbMix: 3, masterVolume: 0, limiterThreshold: -5 },
-    { id: 7, name: 'Catedral / Arena Max', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], qValues: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], masterPower: true, fxsoundMode: true, deepBass: 60, clarity: 70, surround: 65, reverbPreset: 4, reverbMix: 10, masterVolume: 2, limiterThreshold: -3 },
+    { id: 1, name: 'FxSound Reference', gains: [3, 2, 1, 0, 1, 4, 3, 2, 4, 5], qValues: [1.2, 1.0, 1.0, 1.0, 1.1, 1.5, 1.4, 1.2, 1.5, 1.8], masterPower: true, fxsoundMode: true, deepBass: 70, clarity: 75, surround: 60, reverbPreset: 5, reverbMix: 10, masterVolume: 100, limiterThreshold: -6 },
+    { id: 2, name: 'Electronic Boost', gains: [6, 5, 2, -1, -2, 2, 4, 5, 6, 4], qValues: [2.0, 1.8, 1.0, 1.0, 1.0, 1.2, 1.5, 1.8, 2.0, 1.5], masterPower: true, fxsoundMode: true, deepBass: 85, clarity: 80, surround: 70, reverbPreset: 5, reverbMix: 10, masterVolume: 100, limiterThreshold: -6 },
+    { id: 3, name: 'Vocal Presence', gains: [-2, -1, 0, 2, 5, 7, 6, 3, 1, 0], qValues: [1.0, 1.0, 1.0, 1.2, 2.0, 2.5, 2.2, 1.5, 1.0, 1.0], masterPower: true, fxsoundMode: true, deepBass: 40, clarity: 90, surround: 45, reverbPreset: 1, reverbMix: 4, masterVolume: 90, limiterThreshold: -6 },
+    { id: 4, name: 'Rock Stadium', gains: [4, 3, 1, 0, 2, 5, 4, 3, 5, 6], qValues: [1.5, 1.3, 1.0, 1.0, 1.2, 1.8, 1.6, 1.4, 1.8, 2.2], masterPower: true, fxsoundMode: true, deepBass: 65, clarity: 70, surround: 80, reverbPreset: 4, reverbMix: 7, masterVolume: 100, limiterThreshold: -6 },
+    { id: 5, name: 'Deep Bass J2 Core', gains: [8, 7, 4, 1, 0, 1, 2, 1, 2, 3], qValues: [2.5, 2.2, 1.5, 1.0, 1.0, 1.0, 1.1, 1.0, 1.2, 1.3], masterPower: true, fxsoundMode: true, deepBass: 95, clarity: 60, surround: 50, reverbPreset: 5, reverbMix: 10, masterVolume: 100, limiterThreshold: -5 },
+    { id: 6, name: 'Acoustic Pure', gains: [1, 2, 3, 2, 1, 3, 4, 3, 2, 2], qValues: [1.0, 1.1, 1.2, 1.1, 1.0, 1.3, 1.5, 1.3, 1.1, 1.1], masterPower: true, fxsoundMode: true, deepBass: 30, clarity: 85, surround: 40, reverbPreset: 1, reverbMix: 3, masterVolume: 90, limiterThreshold: -6 },
+    { id: 7, name: 'Catedral / Arena Max', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], qValues: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], masterPower: true, fxsoundMode: true, deepBass: 60, clarity: 70, surround: 65, reverbPreset: 5, reverbMix: 10, masterVolume: 100, limiterThreshold: -6 },
   ]);
 
   const [deviceModel, setDeviceModel] = useState<string>('Samsung Galaxy J2 Core (SM-J260M)');
-  const [audioSessionId, setAudioSessionId] = useState<number>(121);
-  const [rootStatusLog, setRootStatusLog] = useState<string>('Session 121 / 0 Active • Hardware Reverb & SW Double Injection Ready');
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [rootStatusLog, setRootStatusLog] = useState<string>('Universal Session 0 Master Capture Active • Exynos 7570 Ready');
+  const [isRooted, setIsRooted] = useState<boolean>(true);
 
-  // References for active drags
+  // References for throttled updates
   const gainRafRef = useRef<number | null>(null);
   const pendingGainSyncRef = useRef<{ index: number; gain: number } | null>(null);
-  const pendingQSyncRef = useRef<{ index: number; q: number } | null>(null);
 
   // Initialize Native state
   useEffect(() => {
     const model = callNative('getDeviceModel');
     if (model) setDeviceModel(model);
-    const session = callNative('getActiveAudioSession');
-    if (session) setAudioSessionId(session);
+    const rootCheck = callNative('isRootDevice');
+    if (typeof rootCheck === 'boolean') setIsRooted(rootCheck);
+
+    // Initial sync
+    callNative('inicializarMotoresAudio');
+    callNative('setMasterPower', true);
+    callNative('setFxsoundMode', true);
+    callNative('updateAtmosphere', 5, 10);
+    callNative('updateLimiter', -6);
   }, []);
 
-  // Throttled native sync for gain to avoid blocking WebView UI thread
+  // Sync Gain to Native with RequestAnimationFrame to avoid blocking Exynos UI thread
   const syncGainToNative = useCallback((index: number, val: number) => {
     pendingGainSyncRef.current = { index, gain: val };
     if (gainRafRef.current === null) {
@@ -104,12 +112,12 @@ export default function App() {
         gainRafRef.current = null;
         if (pendingGainSyncRef.current) {
           const { index: i, gain: g } = pendingGainSyncRef.current;
-          callNative('updateEqualizerBand', i, g);
-          callNative('updateBandLevel', i, g * 100);
+          callNative('updateBandGain', i, g);
+          callNative('updateAudio', frequencies[i], g);
         }
       });
     }
-  }, []);
+  }, [frequencies]);
 
   // Update Gain safely
   const updateGain = useCallback((index: number, val: number) => {
@@ -132,17 +140,15 @@ export default function App() {
       next[index] = rounded;
       return next;
     });
-    pendingQSyncRef.current = { index, q: rounded };
     callNative('updateBandQ', index, rounded);
   }, []);
 
-  // WINDOW-LEVEL DRAGGING HANDLERS FOR 100% UNFREEZE & INDEPENDENT CONTROLS
-  // 1. Dragging Band Gain (channel fader)
-  const startGainDrag = (index: number, startY: number, currentGain: number) => {
+  // WINDOW-LEVEL DRAGGING HANDLER FOR KNOBS (100% UNFREEZE & INDEPENDENT)
+  const startKnobDrag = (index: number, startY: number, currentGain: number) => {
     const onMove = (moveY: number) => {
       const deltaY = startY - moveY;
-      // 140px full range for 24 dB (-12 to +12)
-      const deltaGain = (deltaY / 140) * 24;
+      // 120px full range for 24 dB (-12 to +12)
+      const deltaGain = (deltaY / 120) * 24;
       updateGain(index, currentGain + deltaGain);
     };
 
@@ -175,11 +181,10 @@ export default function App() {
     window.addEventListener('touchcancel', handleEnd);
   };
 
-  // 2. Dragging Q Knob (circular knob at bottom)
+  // Dragging Q Knob
   const startQDrag = (index: number, startY: number, currentQ: number) => {
     const onMove = (moveY: number) => {
       const deltaY = startY - moveY;
-      // 100px for 2.5x range (0.5 to 3.0)
       const deltaQ = (deltaY / 100) * 2.5;
       updateQ(index, currentQ + deltaQ);
     };
@@ -280,79 +285,57 @@ export default function App() {
       return p;
     });
     setProfiles(updated);
-    setRootStatusLog(`Profile P${currentProfileId} saved to SharedPreferences!`);
+    setRootStatusLog(`Perfil P${currentProfileId} guardado con éxito en SharedPreferences.`);
     callNative('saveCurrentProfile', currentProfileId);
     setTimeout(() => {
-      setRootStatusLog('Session 121 / 0 Active • Hardware Reverb & SW Double Injection Ready');
+      setRootStatusLog('Universal Session 0 Master Capture Active • Exynos 7570 Ready');
     }, 3000);
   };
 
-  // REAL-TIME SPLINE CANVAS UPDATE
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  // Reconnection and AudioServer restart
+  const handleForceReconnect = () => {
+    callNative('reconnectSessions');
+    callNative('inicializarMotoresAudio');
+    setRootStatusLog('⚡ Ciclo ultrarrápido: Motores reinicializados en Session 0 y Session 121 (<1ms).');
+  };
 
-    const width = canvas.width;
-    const height = canvas.height;
-
-    ctx.clearRect(0, 0, width, height);
-
-    // Grid lines
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.lineWidth = 1;
-    [0.2, 0.5, 0.8].forEach(r => {
-      ctx.beginPath();
-      ctx.moveTo(0, height * r);
-      ctx.lineTo(width, height * r);
-      ctx.stroke();
-    });
-
-    // Spline curve connecting all 10 gains
-    ctx.strokeStyle = '#00f2fe';
-    ctx.lineWidth = 2.5;
-    ctx.shadowColor = '#007fff';
-    ctx.shadowBlur = 8;
-    ctx.beginPath();
-
-    const stepX = width / (eqGains.length - 1);
-    const points = eqGains.map((gain, i) => {
-      const normalized = (gain + 12) / 24;
-      return {
-        x: i * stepX,
-        y: height - (normalized * (height - 12) + 6)
-      };
-    });
-
-    points.forEach((pt, i) => {
-      if (i === 0) {
-        ctx.moveTo(pt.x, pt.y);
-      } else {
-        const prev = points[i - 1];
-        const cpX = (prev.x + pt.x) / 2;
-        ctx.bezierCurveTo(cpX, prev.y, cpX, pt.y, pt.x, pt.y);
-      }
-    });
-    ctx.stroke();
-
-    // Little glowing points
-    points.forEach(pt => {
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    });
-    ctx.shadowBlur = 0;
-  }, [eqGains]);
+  const handleRestartAudioServer = () => {
+    callNative('restartAudioServer');
+    setRootStatusLog('💀 Root killall audioserver ejecutado. Reenganchando hilos en caliente...');
+    setTimeout(() => {
+      setRootStatusLog('Universal Session 0 Master Capture Active • Exynos 7570 Ready');
+    }, 2500);
+  };
 
   const roomNames = [
-    { id: 0, name: '1. Estudio', desc: '1kHz +3dB' },
-    { id: 1, name: '2. Habitación', desc: '1kHz +5dB, 2kHz +2dB' },
-    { id: 2, name: '3. Estudio Pro', desc: '1kHz +7dB, 2kHz +4dB, 16kHz -2dB' },
-    { id: 3, name: '4. Auditorio', desc: '1kHz +10dB, 2kHz +6dB, 500Hz -3dB' },
-    { id: 4, name: '5. Catedral/Arena', desc: '1kHz +15dB, 2kHz +10dB, 500Hz -5dB' },
+    { id: 1, name: '1. Estudio', desc: '1kHz +3dB' },
+    { id: 2, name: '2. Habitación', desc: '1kHz +5dB, 2kHz +2dB' },
+    { id: 3, name: '3. Estudio Pro', desc: '1kHz +7dB, 2kHz +4dB, 16kHz -2dB' },
+    { id: 4, name: '4. Auditorio', desc: '1kHz +10dB, 2kHz +6dB, 500Hz -3dB' },
+    { id: 5, name: '5. Catedral/Arena', desc: '1kHz +15dB, 2kHz +10dB, 500Hz -5dB' },
   ];
+
+  // SVG Spline calculation for lightweight GPU curve
+  const svgWidth = 600;
+  const svgHeight = 44;
+  const points = eqGains.map((gain, i) => {
+    const x = (i / (eqGains.length - 1)) * (svgWidth - 20) + 10;
+    const normalized = (gain + 12) / 24; // 0 to 1
+    const y = svgHeight - (normalized * (svgHeight - 12) + 6);
+    return { x, y };
+  });
+
+  const generateSvgPath = () => {
+    if (points.length === 0) return '';
+    let d = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+      const cpX = (prev.x + curr.x) / 2;
+      d += ` C ${cpX} ${prev.y}, ${cpX} ${curr.y}, ${curr.x} ${curr.y}`;
+    }
+    return d;
+  };
 
   return (
     <div
@@ -360,7 +343,7 @@ export default function App() {
       style={{ touchAction: 'none' }}
     >
       {/* Top Header Bar */}
-      <div className="flex items-center justify-between px-3.5 py-2 bg-[#12161f] border-b border-[#1f293d] shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 bg-[#12161f] border-b border-[#1f293d] shrink-0">
         <div className="flex items-center space-x-2.5">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center shadow-lg shadow-cyan-500/30">
             <Activity className="w-4 h-4 text-white" />
@@ -375,13 +358,24 @@ export default function App() {
               </span>
             </div>
             <p className="text-[10px] text-gray-400 font-mono">
-              {deviceModel} • DAC 121
+              {deviceModel} • Universal Session 0 Master
             </p>
           </div>
         </div>
 
-        {/* Global Power and Mode Toggles */}
+        {/* Global Controls */}
         <div className="flex items-center space-x-2">
+          {/* Quick Kill AudioServer Button */}
+          <button
+            onClick={handleRestartAudioServer}
+            title="Reiniciar AudioServer por Root"
+            className="px-2 py-1 bg-red-950/60 hover:bg-red-900/80 border border-red-700/60 text-red-300 rounded text-[10px] font-bold flex items-center space-x-1 transition-all"
+          >
+            <ShieldAlert className="w-3 h-3 text-red-400" />
+            <span>KILL AUDIO</span>
+          </button>
+
+          {/* FxSound Mode Toggle */}
           <button
             onClick={toggleFxsoundMode}
             className={`px-2.5 py-1 rounded text-[10px] font-bold border transition-all flex items-center space-x-1 ${
@@ -394,6 +388,7 @@ export default function App() {
             <span>FXSOUND PC</span>
           </button>
 
+          {/* Master Power Toggle */}
           <button
             onClick={toggleMasterPower}
             className={`p-1.5 rounded-full border transition-all ${
@@ -412,114 +407,174 @@ export default function App() {
         {/* Navigation Tabs */}
         <div className="flex border-b border-[#1f293d] bg-[#141a26] text-xs font-semibold shrink-0">
           <button
-            onClick={() => setActiveTab('eq')}
-            className={`flex-1 py-2 text-center border-b-2 transition-all ${
-              activeTab === 'eq'
+            onClick={() => setActiveTab('knobs')}
+            className={`flex-1 py-2 text-center border-b-2 transition-all flex items-center justify-center space-x-1.5 ${
+              activeTab === 'knobs'
                 ? 'border-cyan-400 text-cyan-400 bg-[#1e2637]/50'
                 : 'border-transparent text-gray-400 hover:text-white'
             }`}
           >
-            10-BANDAS EQ
+            <Radio className="w-3.5 h-3.5" />
+            <span>10-PERILLAS EQ</span>
           </button>
           <button
             onClick={() => setActiveTab('fxsound')}
-            className={`flex-1 py-2 text-center border-b-2 transition-all ${
+            className={`flex-1 py-2 text-center border-b-2 transition-all flex items-center justify-center space-x-1.5 ${
               activeTab === 'fxsound'
                 ? 'border-red-500 text-red-400 bg-red-950/20'
                 : 'border-transparent text-gray-400 hover:text-white'
             }`}
           >
-            DINÁMICA FXSOUND
+            <Layers className="w-3.5 h-3.5" />
+            <span>DINÁMICA FXSOUND</span>
           </button>
           <button
             onClick={() => setActiveTab('presets')}
-            className={`flex-1 py-2 text-center border-b-2 transition-all ${
+            className={`flex-1 py-2 text-center border-b-2 transition-all flex items-center justify-center space-x-1.5 ${
               activeTab === 'presets'
                 ? 'border-cyan-400 text-cyan-400 bg-[#1e2637]/50'
                 : 'border-transparent text-gray-400 hover:text-white'
             }`}
           >
-            PERFILES (P1-P7)
+            <Bookmark className="w-3.5 h-3.5" />
+            <span>PERFILES (P1-P7)</span>
           </button>
           <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex-1 py-2 text-center border-b-2 transition-all ${
-              activeTab === 'settings'
+            onClick={() => setActiveTab('root')}
+            className={`flex-1 py-2 text-center border-b-2 transition-all flex items-center justify-center space-x-1.5 ${
+              activeTab === 'root'
                 ? 'border-cyan-400 text-cyan-400 bg-[#1e2637]/50'
                 : 'border-transparent text-gray-400 hover:text-white'
             }`}
           >
-            ROOT ENGINE
+            <Terminal className="w-3.5 h-3.5" />
+            <span>ROOT ENGINE</span>
           </button>
         </div>
 
-        {/* TAB 1: 10-BAND EQ WITH INDEPENDENT CHANNELS & KNOBS */}
-        {activeTab === 'eq' && (
+        {/* TAB 1: 10-PERILLAS GIRATORIAS (REDUCCIÓN TOTAL DE CPU Y ELIMINACIÓN DE DESLIZADORES VERTICALES) */}
+        {activeTab === 'knobs' && (
           <div
             className="flex-1 flex flex-col p-2.5 overflow-hidden space-y-2"
             style={{ touchAction: 'none' }}
           >
-            {/* Top Spline Curve Canvas */}
+            {/* Top Lightweight Hardware-Accelerated Spline Strip */}
             <div className="bg-[#12161f] border border-[#212c42] rounded-lg p-1.5 relative shadow-inner shrink-0">
-              <div className="absolute top-1 left-2 text-[9px] font-mono text-cyan-400 flex items-center space-x-1">
-                <SlidersHorizontal className="w-2.5 h-2.5" />
-                <span>FREQUENCY RESPONSE CURVE (SPLINE)</span>
+              <div className="flex items-center justify-between text-[9px] font-mono text-cyan-400 px-1 mb-1">
+                <div className="flex items-center space-x-1">
+                  <SlidersHorizontal className="w-2.5 h-2.5" />
+                  <span>CURVA DE RESPUESTA ACÚSTICA • PROCESADOR EXYNOS 7570</span>
+                </div>
+                <span className="text-gray-400">10 Canales Independientes</span>
               </div>
-              <canvas ref={canvasRef} width={500} height={52} className="w-full h-12 mt-2 pointer-events-none" />
+              <svg
+                viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                className="w-full h-9 pointer-events-none"
+                style={{ willChange: 'transform' }}
+              >
+                {/* Horizontal reference grid lines */}
+                <line x1="0" y1={svgHeight / 2} x2={svgWidth} y2={svgHeight / 2} stroke="rgba(255, 255, 255, 0.12)" strokeWidth="1" strokeDasharray="3 3" />
+                <line x1="0" y1="6" x2={svgWidth} y2="6" stroke="rgba(255, 255, 255, 0.05)" strokeWidth="1" />
+                <line x1="0" y1={svgHeight - 6} x2={svgWidth} y2={svgHeight - 6} stroke="rgba(255, 255, 255, 0.05)" strokeWidth="1" />
+                
+                {/* Dynamic neon spline path */}
+                <path
+                  d={generateSvgPath()}
+                  fill="none"
+                  stroke="#00f2fe"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  style={{ filter: 'drop-shadow(0px 0px 4px #007fff)' }}
+                />
+
+                {/* Point nodes */}
+                {points.map((pt, i) => (
+                  <circle
+                    key={i}
+                    cx={pt.x}
+                    cy={pt.y}
+                    r="2.5"
+                    fill="#ffffff"
+                    stroke="#00f2fe"
+                    strokeWidth="1"
+                  />
+                ))}
+              </svg>
             </div>
 
-            {/* 10 Vertical Channels Horizontal Row */}
+            {/* SECCIÓN I: 10 PERILLAS GIRATORIAS CIRCULARES METÁLICAS #2a2a2a (INDEPENDIENTES Y SIN SLIDERS) */}
             <div
-              className="flex-1 bg-[#12161f] border border-[#212c42] rounded-xl p-2 flex justify-between items-center space-x-1.5 overflow-hidden select-none"
+              className="flex-1 bg-[#12161f] border border-[#212c42] rounded-xl p-2 flex justify-between items-center space-x-1 overflow-x-auto select-none"
               style={{ touchAction: 'none' }}
             >
               {frequencies.map((freq, idx) => {
                 const gain = eqGains[idx];
                 const qVal = eqQValues[idx];
-                const normalizedGain = (gain + 12) / 24; // 0 to 1
-                const knobAngle = ((qVal - 0.5) / 2.5) * 270 - 135; // -135deg to +135deg rotation
+                // Angle maps from -12dB -> -135deg to +12dB -> +135deg
+                const knobAngle = (gain / 12) * 135;
 
                 return (
                   <div
                     key={idx}
-                    className="flex-1 flex flex-col items-center justify-between h-full py-1 bg-[#171d29] rounded-lg border border-[#232e45] hover:border-cyan-500/50 transition-colors select-none relative"
+                    className="flex-1 min-w-[32px] max-w-[64px] flex flex-col items-center justify-between h-full py-1 bg-[#161c28] rounded-lg border border-[#232e45] hover:border-cyan-500/60 transition-colors select-none relative"
                     style={{ touchAction: 'none' }}
                   >
-                    {/* 1. Top: Decibel Indicator */}
-                    <div className="text-[9px] font-mono font-bold text-cyan-300 bg-[#0b0d11] px-1 py-0.5 rounded border border-cyan-500/20">
+                    {/* 1. Indicador Superior de Decibelios */}
+                    <div
+                      className={`text-[9px] font-mono font-bold px-1 py-0.5 rounded border ${
+                        gain > 0
+                          ? 'text-cyan-300 bg-cyan-950/40 border-cyan-500/40'
+                          : gain < 0
+                          ? 'text-amber-400 bg-amber-950/40 border-amber-500/30'
+                          : 'text-gray-300 bg-[#0b0d11] border-gray-700'
+                      }`}
+                    >
                       {gain > 0 ? `+${gain}` : gain}dB
                     </div>
 
-                    {/* 2. Center: Linear Fader Channel (touch/drag to change Gain) */}
+                    {/* 2. Perilla Giratoria Circular (#2a2a2a Metálica con Aguja Neón y Anillo Angular) */}
                     <div
                       onPointerDown={(e) => {
                         e.stopPropagation();
-                        startGainDrag(idx, e.clientY, gain);
+                        startKnobDrag(idx, e.clientY, gain);
                       }}
                       onTouchStart={(e) => {
                         e.stopPropagation();
                         if (e.touches && e.touches.length > 0) {
-                          startGainDrag(idx, e.touches[0].clientY, gain);
+                          startKnobDrag(idx, e.touches[0].clientY, gain);
                         }
                       }}
-                      className="relative flex-1 w-full flex items-center justify-center cursor-ns-resize my-1"
+                      onDoubleClick={() => updateGain(idx, 0)}
+                      className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center cursor-ns-resize my-1 select-none"
                       style={{ touchAction: 'none' }}
+                      title={`Frecuencia ${freq}: ${gain} dB (Arrastre vertical para rotar, doble toque para 0 dB)`}
                     >
-                      <div className="w-2.5 h-full bg-[#0b0d11] rounded-full relative flex items-end justify-center pointer-events-none">
-                        {/* Active Gain Fill Bar */}
+                      {/* Outer Ring Arc Glow */}
+                      <div
+                        className="absolute inset-0 rounded-full border-2 border-[#1f293d]"
+                        style={{
+                          background: `conic-gradient(from 225deg, #00f2fe ${Math.max(0, (gain + 12) / 24) * 270}deg, #1a2233 0deg)`
+                        }}
+                      />
+
+                      {/* Knob Center Disc (Gris Oscuro Metálico #2a2a2a con relieve) */}
+                      <div className="absolute inset-1 rounded-full knob-metal flex items-center justify-center pointer-events-none">
+                        {/* Rotary Needle Line / Notch Indicator */}
                         <div
-                          className="w-full bg-gradient-to-t from-blue-600 to-cyan-400 rounded-full transition-all duration-75"
-                          style={{ height: `${Math.max(6, normalizedGain * 100)}%` }}
-                        />
-                        {/* Fader Handle */}
-                        <div
-                          className="absolute w-5 h-2.5 bg-white rounded shadow-md border border-cyan-400"
-                          style={{ bottom: `calc(${normalizedGain * 100}% - 5px)` }}
-                        />
+                          className="w-full h-full relative flex items-start justify-center transition-transform duration-75"
+                          style={{ transform: `rotate(${knobAngle}deg)` }}
+                        >
+                          <div className="w-1 h-3 bg-gradient-to-b from-cyan-300 to-blue-500 rounded-full mt-0.5 shadow-sm shadow-cyan-400" />
+                        </div>
+
+                        {/* Metallic Center Cap */}
+                        <div className="absolute w-3.5 h-3.5 rounded-full bg-[#1b202a] border border-[#3b475c] shadow-inner flex items-center justify-center">
+                          <div className="w-1 h-1 rounded-full bg-cyan-400" />
+                        </div>
                       </div>
                     </div>
 
-                    {/* 3. Bottom: Independent Rotary Knob (#2a2a2a circular knob with neon blue #007fff ring) */}
+                    {/* 3. Factor Q / Resonancia Sub-control (Arrastrable de 0.5x a 3.0x) */}
                     <div
                       onPointerDown={(e) => {
                         e.stopPropagation();
@@ -531,22 +586,17 @@ export default function App() {
                           startQDrag(idx, e.touches[0].clientY, qVal);
                         }
                       }}
-                      className="w-6 h-6 rounded-full bg-[#2a2a2a] border-2 border-[#007fff] relative flex items-center justify-center shadow-md shadow-blue-900/40 cursor-pointer hover:border-cyan-400 transition-colors"
+                      className="px-1 py-0.2 bg-[#0d1118] border border-[#2b374c] rounded cursor-ns-resize hover:border-cyan-400 transition-colors"
                       style={{ touchAction: 'none' }}
-                      title={`Factor Q / Resonancia: ${qVal}x`}
+                      title={`Factor Q: ${qVal}x (Arrastre arriba/abajo)`}
                     >
-                      {/* Knob Indicator Dot */}
-                      <div
-                        className="absolute w-1 h-2 bg-[#007fff] rounded-full top-0.5 origin-bottom pointer-events-none transition-transform duration-75"
-                        style={{ transform: `rotate(${knobAngle}deg)` }}
-                      />
-                      <span className="text-[7px] font-mono text-gray-200 pointer-events-none">
-                        {qVal}x
+                      <span className="text-[7.5px] font-mono text-cyan-200">
+                        Q:{qVal}x
                       </span>
                     </div>
 
-                    {/* 4. Foot: Fixed Frequency Label */}
-                    <div className="text-[9px] font-bold text-gray-300 mt-1 font-mono">
+                    {/* 4. Etiqueta Fija de Frecuencia */}
+                    <div className="text-[9px] font-bold text-gray-200 font-mono mt-0.5">
                       {freq}
                     </div>
                   </div>
@@ -569,17 +619,25 @@ export default function App() {
               </button>
 
               <button
+                onClick={handleForceReconnect}
+                className="py-1.5 px-3 bg-[#192231] hover:bg-[#223048] border border-cyan-500/40 rounded-lg text-xs font-semibold text-cyan-300 flex items-center justify-center space-x-1.5 transition-colors"
+              >
+                <RefreshCw className="w-3 h-3 text-cyan-400" />
+                <span>Reconectar Audio (0 & 121)</span>
+              </button>
+
+              <button
                 onClick={saveCurrentProfile}
                 className="flex-1 py-1.5 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 rounded-lg text-xs font-semibold text-white flex items-center justify-center space-x-1.5 shadow-md shadow-cyan-500/20 transition-all"
               >
                 <Bookmark className="w-3 h-3" />
-                <span>Save to P{currentProfileId}</span>
+                <span>Guardar en P{currentProfileId}</span>
               </button>
             </div>
           </div>
         )}
 
-        {/* TAB 2: FXSOUND DYNAMICS & ADVANCED RED CONTROLS */}
+        {/* TAB 2: DINÁMICA FXSOUND PC & SALA 5 (+15 dB) */}
         {activeTab === 'fxsound' && (
           <div className="flex-1 p-3 overflow-y-auto space-y-3">
             {/* 1. Reverb Architecture: 5 Room Selector & Mix Potentiometer */}
@@ -587,36 +645,37 @@ export default function App() {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-red-400 flex items-center space-x-1.5">
                   <Layers className="w-3.5 h-3.5 text-red-500" />
-                  <span>ATMÓSFERA DE SALA (REVERB PSICOACÚSTICO HARDWARE)</span>
+                  <span>ATMÓSFERA DE SALA (REVERB PSICOACÚSTICO FXSOUND)</span>
                 </span>
-                <span className="text-[10px] font-mono text-gray-400">
+                <span className="text-[10px] font-mono text-cyan-300 bg-red-950/40 px-1.5 py-0.5 rounded border border-red-800/40">
                   Mix: {reverbMix * 10}%
                 </span>
               </div>
 
-              {/* 5 Physical Room Buttons */}
+              {/* 5 Physical Room Buttons (Sala 5 por defecto) */}
               <div className="grid grid-cols-5 gap-1.5 mb-3">
                 {roomNames.map(room => (
                   <button
                     key={room.id}
                     onClick={() => setReverbPreset(room.id)}
-                    className={`p-1.5 rounded-lg border text-center transition-all ${
+                    className={`py-2 px-1 rounded-lg border text-center transition-all flex flex-col items-center justify-center ${
                       reverbPreset === room.id
-                        ? 'bg-red-950/70 border-red-500 text-white shadow-md shadow-red-900/30'
-                        : 'bg-[#1b202c] border-[#293246] text-gray-400 hover:text-white'
+                        ? 'bg-gradient-to-b from-red-600 to-red-800 text-white border-red-400 shadow-md shadow-red-600/40'
+                        : 'bg-[#1a1f2b] text-gray-400 border-gray-800 hover:border-gray-700'
                     }`}
                   >
-                    <div className="text-[10px] font-bold truncate">{room.name}</div>
-                    <div className="text-[8px] font-mono text-red-300 truncate">{room.desc}</div>
+                    <span className="text-[10px] font-bold">{room.name}</span>
+                    <span className="text-[7.5px] text-gray-300 font-mono mt-0.5">{room.desc}</span>
                   </button>
                 ))}
               </div>
 
-              {/* Reverb Mix Slider (0 to 10) */}
+              {/* Reverb Mix Slider */}
               <div className="space-y-1">
-                <div className="flex justify-between text-[11px] font-mono">
-                  <span className="text-gray-300">Nivel de Eco (Mix Reverb)</span>
-                  <span className="text-red-400 font-bold">{reverbMix} / 10</span>
+                <div className="flex justify-between text-[10px] text-gray-400">
+                  <span>Dry (0% Reverb)</span>
+                  <span className="text-red-400 font-bold">Nivel de Mezcla: {reverbMix}/10</span>
+                  <span>Wet (100% Catedral)</span>
                 </div>
                 <input
                   type="range"
@@ -625,212 +684,243 @@ export default function App() {
                   step="1"
                   value={reverbMix}
                   onChange={(e) => setReverbMix(parseInt(e.target.value))}
-                  className="w-full accent-red-500 cursor-pointer"
+                  className="w-full accent-red-500"
                 />
               </div>
             </div>
 
-            {/* 2. Advanced Crimson Sliders (dfxpProcessReal.cpp & FiltCalcBiqd.cpp) */}
-            <div className="bg-[#141720] border border-red-950/60 rounded-xl p-3 shadow-lg space-y-3">
-              <span className="text-xs font-bold text-red-400 flex items-center space-x-1.5">
-                <Volume2 className="w-3.5 h-3.5 text-red-500" />
-                <span>FILTROS DSP ROJO CARMESÍ (PROCESAMIENTO BIT-PERFECT)</span>
-              </span>
-
-              {/* Master Volume (-12 to +12 dB) */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-[11px] font-mono">
-                  <span className="text-gray-300">Volumen Maestro DAC</span>
-                  <span className="text-red-400 font-bold">{masterVolume > 0 ? `+${masterVolume}` : masterVolume} dB</span>
+            {/* 2. DSP Macro Modules: Bass, Clarity, Surround, Limiter */}
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* Deep Bass */}
+              <div className="bg-[#141720] border border-[#212c42] rounded-xl p-2.5">
+                <div className="flex justify-between text-xs font-bold text-gray-200 mb-1">
+                  <span>Deep Bass (Graves Sub)</span>
+                  <span className="text-cyan-400 font-mono">{deepBass}%</span>
                 </div>
                 <input
                   type="range"
-                  min="-12"
-                  max="12"
-                  step="1"
-                  value={masterVolume}
-                  onChange={(e) => setMasterVolume(parseInt(e.target.value))}
-                  className="w-full accent-red-500 cursor-pointer"
+                  min="0"
+                  max="100"
+                  value={deepBass}
+                  onChange={(e) => setDeepBass(parseInt(e.target.value))}
+                  className="w-full"
                 />
               </div>
 
-              {/* Dynamic Limiter / Ceiling (-20 to 0 dB) */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-[11px] font-mono">
-                  <span className="text-gray-300">Normalización Dinámica (Limiter Peak)</span>
-                  <span className="text-red-400 font-bold">{limiterThreshold} dB</span>
+              {/* Dynamic Clarity */}
+              <div className="bg-[#141720] border border-[#212c42] rounded-xl p-2.5">
+                <div className="flex justify-between text-xs font-bold text-gray-200 mb-1">
+                  <span>Dynamic Clarity (Nitidez)</span>
+                  <span className="text-cyan-400 font-mono">{clarity}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={clarity}
+                  onChange={(e) => setClarity(parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+
+              {/* 3D Surround */}
+              <div className="bg-[#141720] border border-[#212c42] rounded-xl p-2.5">
+                <div className="flex justify-between text-xs font-bold text-gray-200 mb-1">
+                  <span>Surround 3D (Espacial)</span>
+                  <span className="text-cyan-400 font-mono">{surround}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={surround}
+                  onChange={(e) => setSurround(parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Master Volume Gain */}
+              <div className="bg-[#141720] border border-[#212c42] rounded-xl p-2.5">
+                <div className="flex justify-between text-xs font-bold text-gray-200 mb-1">
+                  <span>Master Output Boost</span>
+                  <span className="text-cyan-400 font-mono">{masterVolume}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={masterVolume}
+                  onChange={(e) => setMasterVolume(parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Anti-Clipping Limiter (-6 dB Default) */}
+              <div className="bg-[#141720] border border-[#212c42] rounded-xl p-2.5 col-span-2">
+                <div className="flex justify-between text-xs font-bold text-gray-200 mb-1">
+                  <span className="flex items-center space-x-1">
+                    <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Limiter Anti-Clipping DAC Samsung</span>
+                  </span>
+                  <span className="text-amber-400 font-mono">{limiterThreshold} dB</span>
                 </div>
                 <input
                   type="range"
                   min="-20"
                   max="0"
-                  step="1"
                   value={limiterThreshold}
                   onChange={(e) => setLimiterThreshold(parseInt(e.target.value))}
-                  className="w-full accent-red-500 cursor-pointer"
+                  className="w-full accent-amber-500"
                 />
-              </div>
-
-              {/* Balance L/R (-10 to +10) */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-[11px] font-mono">
-                  <span className="text-gray-300">Balance Simétrico L / R</span>
-                  <span className="text-red-400 font-bold">{balance === 0 ? 'Centro (0)' : balance < 0 ? `L ${Math.abs(balance)}` : `R ${balance}`}</span>
-                </div>
-                <input
-                  type="range"
-                  min="-10"
-                  max="10"
-                  step="1"
-                  value={balance}
-                  onChange={(e) => setBalance(parseInt(e.target.value))}
-                  className="w-full accent-red-500 cursor-pointer"
-                />
-              </div>
-
-              {/* Deep Bass, Clarity & Surround */}
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                <div className="bg-[#1b202c] p-2 rounded-lg border border-[#2a3449]">
-                  <div className="text-[10px] text-gray-300 mb-1">Deep Bass</div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={deepBass}
-                    onChange={(e) => setDeepBass(parseInt(e.target.value))}
-                    className="w-full accent-red-500"
-                  />
-                  <div className="text-right text-[10px] text-red-400 font-mono mt-0.5">{deepBass}%</div>
-                </div>
-
-                <div className="bg-[#1b202c] p-2 rounded-lg border border-[#2a3449]">
-                  <div className="text-[10px] text-gray-300 mb-1">Clarity</div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={clarity}
-                    onChange={(e) => setClarity(parseInt(e.target.value))}
-                    className="w-full accent-red-500"
-                  />
-                  <div className="text-right text-[10px] text-red-400 font-mono mt-0.5">{clarity}%</div>
-                </div>
-
-                <div className="bg-[#1b202c] p-2 rounded-lg border border-[#2a3449]">
-                  <div className="text-[10px] text-gray-300 mb-1">3D Surround</div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={surround}
-                    onChange={(e) => setSurround(parseInt(e.target.value))}
-                    className="w-full accent-red-500"
-                  />
-                  <div className="text-right text-[10px] text-red-400 font-mono mt-0.5">{surround}%</div>
+                <div className="text-[9px] text-gray-400 mt-1">
+                  Protege el convertidor DAC contra saturación y distorsión armónica forzando compresión 4:1 en picos de ganancia.
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* TAB 3: PROFILES (P1 TO P7) */}
+        {/* TAB 3: PERFILES FXSOUND (P1 - P7) */}
         {activeTab === 'presets' && (
           <div className="flex-1 p-3 overflow-y-auto space-y-2">
-            <div className="text-xs font-bold text-gray-400 font-mono mb-1">
-              PERFILES PREDEFINIDOS FXSOUND & MEMORIA DE HARDWARE (P1 - P7)
+            <div className="text-xs font-bold text-gray-300 mb-2 flex items-center justify-between">
+              <span>PREAJUSTES Y BANCOS DE MEMORIA (P1 - P7)</span>
+              <span className="text-[10px] text-cyan-400">Activo: P{currentProfileId}</span>
             </div>
-            {profiles.map(p => (
-              <div
-                key={p.id}
-                onClick={() => selectProfile(p)}
-                className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                  currentProfileId === p.id
-                    ? 'bg-[#1b2435] border-cyan-400 text-white shadow-md shadow-cyan-950/50'
-                    : 'bg-[#12161f] border-[#222c3f] text-gray-400 hover:text-white'
-                }`}
-              >
-                <div>
-                  <div className="text-xs font-bold flex items-center space-x-2">
-                    <span className="font-mono text-cyan-400">P{p.id}</span>
-                    <span>{p.name}</span>
+
+            <div className="grid grid-cols-1 gap-2">
+              {profiles.map(p => (
+                <div
+                  key={p.id}
+                  onClick={() => selectProfile(p)}
+                  className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                    currentProfileId === p.id
+                      ? 'bg-gradient-to-r from-[#192638] to-[#121c29] border-cyan-400 shadow-md shadow-cyan-500/20'
+                      : 'bg-[#131722] border-[#222b3d] hover:border-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <div
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
+                        currentProfileId === p.id
+                          ? 'bg-cyan-500 text-black font-mono'
+                          : 'bg-[#1e2535] text-gray-400 font-mono'
+                      }`}
+                    >
+                      P{p.id}
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs text-white">{p.name}</div>
+                      <div className="text-[10px] text-gray-400 font-mono">
+                        Bass: {p.deepBass}% • Clarity: {p.clarity}% • Sala: {p.reverbPreset}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-[10px] font-mono text-gray-400 mt-0.5">
-                    Reverb: {roomNames[p.reverbPreset]?.name} • Mix: {p.reverbMix}/10 • Bass: {p.deepBass}%
+
+                  <div className="flex items-center space-x-2">
+                    {currentProfileId === p.id && (
+                      <span className="text-[9px] bg-cyan-950 text-cyan-300 border border-cyan-700/60 px-1.5 py-0.5 rounded font-mono">
+                        EN USO
+                      </span>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-gray-500" />
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-gray-500" />
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
-        {/* TAB 4: ROOT ENGINE & SYSTEM STATUS */}
-        {activeTab === 'settings' && (
+        {/* TAB 4: ROOT ENGINE & DIAGNÓSTICO EN TIEMPO REAL */}
+        {activeTab === 'root' && (
           <div className="flex-1 p-3 overflow-y-auto space-y-3">
-            <div className="bg-[#12161f] border border-[#212c42] rounded-xl p-3 space-y-2">
-              <span className="text-xs font-bold text-cyan-400 flex items-center space-x-1.5">
-                <ShieldAlert className="w-3.5 h-3.5" />
-                <span>ESTADO DEL MOTOR DE AUDIO ROOT & HARDWARE</span>
-              </span>
+            {/* Master Engine State */}
+            <div className="bg-[#121620] border border-[#222c3f] rounded-xl p-3 shadow-lg">
+              <div className="text-xs font-bold text-gray-200 mb-2.5 flex items-center justify-between">
+                <span className="flex items-center space-x-1.5">
+                  <Terminal className="w-4 h-4 text-cyan-400" />
+                  <span>DIAGNÓSTICO DEL KERNEL DE AUDIO EXYNOS</span>
+                </span>
+                <span className="px-2 py-0.5 bg-emerald-950/80 border border-emerald-600/40 text-[9px] rounded font-mono text-emerald-300">
+                  UNIVERSAL SESSION 0 ACTIVA
+                </span>
+              </div>
 
-              <div className="text-xs space-y-1 font-mono text-gray-300">
-                <div className="flex justify-between border-b border-[#212c42] py-1">
-                  <span>Dispositivo:</span>
-                  <span className="text-cyan-300 font-bold">{deviceModel}</span>
+              <div className="grid grid-cols-2 gap-2 text-[10px] font-mono mb-3">
+                <div className="bg-[#171d29] p-2 rounded border border-[#232f45]">
+                  <span className="text-gray-400 block">Captura Primaria:</span>
+                  <span className="text-cyan-300 font-bold">Session 0 (Global System Mix)</span>
                 </div>
-                <div className="flex justify-between border-b border-[#212c42] py-1">
-                  <span>Sesión Audio DAC (ZXTune):</span>
-                  <span className="text-cyan-300 font-bold">Session {audioSessionId}</span>
+                <div className="bg-[#171d29] p-2 rounded border border-[#232f45]">
+                  <span className="text-gray-400 block">Soporte Secundario:</span>
+                  <span className="text-cyan-300 font-bold">Session 121 (ZXTune DAC)</span>
                 </div>
-                <div className="flex justify-between border-b border-[#212c42] py-1">
-                  <span>Sesión Global del Sistema:</span>
-                  <span className="text-cyan-300 font-bold">Session 0 (Global)</span>
+                <div className="bg-[#171d29] p-2 rounded border border-[#232f45]">
+                  <span className="text-gray-400 block">Permisos Root:</span>
+                  <span className={isRooted ? 'text-emerald-400 font-bold' : 'text-amber-400'}>
+                    {isRooted ? 'Detectado y Operativo (su)' : 'No detectado'}
+                  </span>
                 </div>
-                <div className="flex justify-between border-b border-[#212c42] py-1">
-                  <span>Paquete Base:</span>
-                  <span className="text-cyan-300 font-bold">com.sec.android.app.soundalive</span>
+                <div className="bg-[#171d29] p-2 rounded border border-[#232f45]">
+                  <span className="text-gray-400 block">Dispositivo Destino:</span>
+                  <span className="text-gray-200">{deviceModel}</span>
                 </div>
               </div>
 
-              <div className="p-2 bg-[#0b0d11] rounded border border-cyan-500/20 text-[10px] font-mono text-cyan-300 mt-2">
-                {rootStatusLog}
+              {/* Action Buttons */}
+              <div className="space-y-2">
+                <button
+                  onClick={handleForceReconnect}
+                  className="w-full py-2 bg-[#1a2538] hover:bg-[#22334e] border border-cyan-500/50 rounded-lg text-xs font-bold text-cyan-300 flex items-center justify-center space-x-2 transition-all shadow-md"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>⚡ Forzar Reconexión de Sesiones 0 & 121 (&lt;1 ms)</span>
+                </button>
+
+                <button
+                  onClick={handleRestartAudioServer}
+                  className="w-full py-2 bg-red-950/50 hover:bg-red-900/60 border border-red-700/60 rounded-lg text-xs font-bold text-red-300 flex items-center justify-center space-x-2 transition-all"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
+                  <span>💀 Reiniciar AudioServer por Root (killall audioserver)</span>
+                </button>
+
+                <a
+                  href="/SoundAlive-Galaxy-J2-Core-Proyecto.zip"
+                  download="SoundAlive-Galaxy-J2-Core-Proyecto.zip"
+                  className="w-full py-2 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 rounded-lg text-xs font-bold text-white flex items-center justify-center space-x-2 transition-all shadow-md shadow-emerald-600/20"
+                >
+                  <Download className="w-3.5 h-3.5 text-white" />
+                  <span>Descargar Proyecto Nativo Completo (ZIP)</span>
+                </a>
               </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="space-y-2">
-              <button
-                onClick={() => {
-                  callNative('reconnectSessions');
-                  callNative('inicializarMotoresAudio');
-                  setRootStatusLog('Ciclo ultrarrápido: Motores reinicializados en Session 0 (Universal) y Session 121 (ZXTune).');
-                }}
-                className="w-full py-2 bg-[#172030] hover:bg-[#202b40] border border-[#263550] rounded-lg text-xs font-semibold text-cyan-400 flex items-center justify-center space-x-2"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Forzar Reconexión de Sesiones 0 & 121</span>
-              </button>
-
-              <a
-                href="/SoundAlive-Galaxy-J2-Core-Proyecto.zip"
-                download="SoundAlive-Galaxy-J2-Core-Proyecto.zip"
-                className="w-full py-2 bg-gradient-to-r from-blue-600 to-cyan-500 rounded-lg text-xs font-semibold text-white flex items-center justify-center space-x-2 shadow-md shadow-cyan-500/20"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Descargar Proyecto Completo ZIP (Listo para Compilar)</span>
-              </a>
+            {/* Console Log */}
+            <div className="bg-[#0b0e14] border border-[#1e2738] rounded-xl p-3 font-mono text-[10px]">
+              <div className="text-gray-400 mb-1 flex items-center space-x-1">
+                <Activity className="w-3 h-3 text-cyan-400" />
+                <span>LOG DEL SISTEMA:</span>
+              </div>
+              <div className="text-cyan-300 bg-[#121620] p-2 rounded border border-[#1f283a] break-all">
+                {rootStatusLog}
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Bottom Status Footer */}
-      <div className="px-3 py-1.5 bg-[#0f131a] border-t border-[#1c2434] flex items-center justify-between text-[10px] font-mono text-gray-400 shrink-0">
+      {/* Persistent Bottom Status Bar */}
+      <div className="px-3 py-1.5 bg-[#0f131a] border-t border-[#1f293d] flex items-center justify-between text-[10px] text-gray-400 font-mono shrink-0">
         <div className="flex items-center space-x-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>DSP ACTIVE • 10 BANDAS • 5 SALAS REVERB</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400 animate-pulse" />
+          <span className="text-gray-300">Audio Session 0 (Universal)</span>
         </div>
-        <span className="text-cyan-400 font-bold">P{currentProfileId}</span>
+        <div className="flex items-center space-x-2">
+          <span>Sala {reverbPreset} (Mix {reverbMix * 10}%)</span>
+          <span className="text-gray-600">•</span>
+          <span className="text-cyan-400 font-bold">Limiter {limiterThreshold}dB</span>
+        </div>
       </div>
     </div>
   );
