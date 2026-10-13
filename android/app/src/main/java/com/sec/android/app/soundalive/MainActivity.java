@@ -28,6 +28,9 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Bloqueo forzado en modo horizontal fijo (Landscape) para cero redimensionamiento en Exynos 7570
+        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+
         // Pantalla completa inmersiva y barra de estado oscura para hardware AMOLED/LCD J2 Core
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(
