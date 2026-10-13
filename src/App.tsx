@@ -55,6 +55,7 @@ export default function App() {
   // 5. Panel Inferior Derecho de Espacialidad
   const [spatialGain, setSpatialGain] = useState<number>(12); // +12 dB
   const [surround3D, setSurround3D] = useState<number>(12);   // +12 dB
+  const [preAmpGain, setPreAmpGain] = useState<number>(12);   // 0 to +20 dB Pre-Amp Global
 
   // 6. Perfiles P1 a P7 y Modal Oreo
   const [activeProfileId, setActiveProfileId] = useState<number>(2);
@@ -657,27 +658,27 @@ export default function App() {
             </div>
           </div>
 
-          {/* Inferior: 2 Faders Verticales DSP (SPATIAL GAIN & GANANCIA ESPACIAL 3D) */}
-          <div className="flex-1 flex space-x-2">
+          {/* Inferior: 3 Faders Verticales DSP (SPATIAL GAIN, GANANCIA ESPACIAL 3D & PRE-AMP GLOBAL) */}
+          <div className="flex-1 flex space-x-1.5">
             {/* SPATIAL GAIN */}
             <div className="flex-1 panel-block p-1.5 flex flex-col items-center justify-between">
-              <div className="text-[8.5px] font-bold text-center text-gray-200 leading-tight">
+              <div className="text-[7.5px] font-bold text-center text-gray-200 leading-tight">
                 SPATIAL<br />GAIN
               </div>
-              <span className="text-[9px] font-mono text-gray-300 font-bold">
-                +{spatialGain} dB
+              <span className="text-[8.5px] font-mono text-gray-300 font-bold">
+                +{spatialGain}
               </span>
 
               {/* Vertical Fader */}
               <div
                 onPointerDown={(e) => startVerticalSliderDrag(e, 0, 15, 1, setSpatialGain, (val) => callNative('updateSurround', Math.round((val / 15) * 100)))}
-                className="flex-1 w-5 relative flex items-center justify-center cursor-pointer my-1"
+                className="flex-1 w-4 relative flex items-center justify-center cursor-pointer my-1"
               >
                 <div className="w-1 h-full bg-[#00e5ff] rounded-full relative">
                   <div
-                    className="absolute w-3.5 h-2.5 fader-thumb-textured rounded-[1px] -left-1.5"
+                    className="absolute w-3 h-2 fader-thumb-textured rounded-[1px] -left-1"
                     style={{
-                      bottom: `calc(${(spatialGain / 15) * 100}% - 5px)`,
+                      bottom: `calc(${(spatialGain / 15) * 100}% - 4px)`,
                     }}
                   />
                 </div>
@@ -686,23 +687,49 @@ export default function App() {
 
             {/* GANANCIA ESPACIAL (3D) */}
             <div className="flex-1 panel-block p-1.5 flex flex-col items-center justify-between">
-              <div className="text-[8.5px] font-bold text-center text-gray-200 leading-tight">
-                GANANCIA<br />ESPACIAL (3D)
+              <div className="text-[7.5px] font-bold text-center text-gray-200 leading-tight">
+                GANANCIA<br />ESPACIAL
               </div>
-              <span className="text-[9px] font-mono text-gray-300 font-bold">
-                +{surround3D} dB
+              <span className="text-[8.5px] font-mono text-gray-300 font-bold">
+                +{surround3D}
               </span>
 
               {/* Vertical Fader */}
               <div
                 onPointerDown={(e) => startVerticalSliderDrag(e, 0, 15, 1, setSurround3D, (val) => callNative('updateClarity', Math.round((val / 15) * 100)))}
-                className="flex-1 w-5 relative flex items-center justify-center cursor-pointer my-1"
+                className="flex-1 w-4 relative flex items-center justify-center cursor-pointer my-1"
               >
                 <div className="w-1 h-full bg-[#00e5ff] rounded-full relative">
                   <div
-                    className="absolute w-3.5 h-2.5 fader-thumb-textured rounded-[1px] -left-1.5"
+                    className="absolute w-3 h-2 fader-thumb-textured rounded-[1px] -left-1"
                     style={{
-                      bottom: `calc(${(surround3D / 15) * 100}% - 5px)`,
+                      bottom: `calc(${(surround3D / 15) * 100}% - 4px)`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* GANANCIA PRE-AMP GLOBAL (0 a +20 dB - Fader Rojo Carmesí) */}
+            <div className="flex-1 panel-block p-1.5 flex flex-col items-center justify-between border-red-900/60 bg-[#150e12]">
+              <div className="text-[7px] font-bold text-center text-red-400 leading-tight">
+                PRE-AMP<br />GLOBAL
+              </div>
+              <span className="text-[8.5px] font-mono text-red-400 font-bold">
+                +{preAmpGain}dB
+              </span>
+
+              {/* Vertical Fader con acento rojo carmesí */}
+              <div
+                onPointerDown={(e) => startVerticalSliderDrag(e, 0, 20, 1, setPreAmpGain, (val) => callNative('updatePreAmp', val))}
+                className="flex-1 w-4 relative flex items-center justify-center cursor-pointer my-1"
+                style={{ touchAction: 'none' }}
+              >
+                <div className="w-1 h-full bg-red-600 rounded-full relative">
+                  <div
+                    className="absolute w-3 h-2 bg-red-500 border border-red-300 rounded-[1px] -left-1 shadow-sm shadow-red-500/80"
+                    style={{
+                      bottom: `calc(${(preAmpGain / 20) * 100}% - 4px)`,
                     }}
                   />
                 </div>
