@@ -368,8 +368,10 @@ public class WebAppInterface {
             updateSurround((int) valor);
         } else if (p.contains("q") || p.contains("filt")) {
             updateFilterQ((int) valor);
-        } else if (p.contains("bal")) {
-            updateBalance((int) valor);
+        } else if (p.contains("comp")) {
+            updateDeepBass((int) (valor * 10));
+        } else if (p.contains("spat")) {
+            updateSurround((int) ((valor / 15.0f) * 100));
         } else if (p.contains("room") || p.contains("sala")) {
             updateAtmosphere((int) valor, mReverbMix);
         } else if (p.contains("mix")) {
@@ -569,6 +571,78 @@ public class WebAppInterface {
             ed.putInt("slot_" + slotId + "_bal", mBalance);
             ed.apply();
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * Llamada única consolidada para guardar perfil completo con nombre,
+     * las 10 bandas y los faders avanzados hacia SharedPreferences de forma inmediata.
+     */
+    @JavascriptInterface
+    public void saveProfileComplete(int slotId, String name, String gainsJson, int compression, int limiter, int reverbMix, float reverbGain, int dacVol1, int dacVol2, int spatialGain, int surround3D) {
+        try {
+            SharedPreferences sp = mContext.getSharedPreferences("SoundAliveSlots", Context.MODE_PRIVATE);
+            SharedPreferences.Editor ed = sp.edit();
+            String profileName = (name != null && !name.trim().isEmpty()) ? name.trim() : "Perfil P" + slotId;
+            ed.putString("slot_" + slotId + "_name", profileName);
+            ed.putBoolean("slot_" + slotId + "_exists", true);
+            ed.putString("slot_" + slotId + "_gains", gainsJson);
+            ed.putInt("slot_" + slotId + "_compression", compression);
+            ed.putInt("slot_" + slotId + "_limit", limiter);
+            ed.putInt("slot_" + slotId + "_mix", reverbMix);
+            ed.putFloat("slot_" + slotId + "_reverb_gain", reverbGain);
+            ed.putInt("slot_" + slotId + "_vol1", dacVol1);
+            ed.putInt("slot_" + slotId + "_vol2", dacVol2);
+            ed.putInt("slot_" + slotId + "_spatial", spatialGain);
+            ed.putInt("slot_" + slotId + "_surround", surround3D);
+            ed.apply();
+
+            // Sincronizar inmediatamente motores de audio
+            JSONArray gArr = new JSONArray(gainsJson);
+            for (int i = 0; i < Math.min(gArr.length(), mUserGainsMb.length); i++) {
+                mUserGainsMb[i] = (short) (gArr.getInt(i) * 100);
+            }
+            this.mLimiterThresholdDb = limiter;
+            this.mReverbMix = reverbMix;
+            this.mDeepBass = Math.min(100, Math.max(0, compression * 10));
+            this.mSurround = Math.min(100, Math.max(0, (int) ((spatialGain / 15.0f) * 100)));
+            this.mClarity = Math.min(100, Math.max(0, (int) ((surround3D / 15.0f) * 100)));
+            this.mMasterVolume = Math.min(100, Math.max(0, (int) (((dacVol1 + 20) / 32.0f) * 100)));
+
+            aplicarEcuacionesAudioDSP();
+            Log.d(TAG, "Perfil P" + slotId + " ('" + profileName + "') guardado en SharedPreferences exitosamente.");
+        } catch (Exception e) {
+            Log.e(TAG, "Error en saveProfileComplete: " + e.getMessage());
+        }
+    }
+
+    @JavascriptInterface
+    public void saveProfileJson(int slotId, String consolidatedJson) {
+        try {
+            JSONObject obj = new JSONObject(consolidatedJson);
+            String name = obj.optString("name", "Perfil P" + slotId);
+            String gains = obj.optString("gains", "[0,0,0,0,0,0,0,0,0,0]");
+            int compression = obj.optInt("compression", 6);
+            int limiter = obj.optInt("limiter", -6);
+            int reverbMix = obj.optInt("reverbMix", 10);
+            float reverbGain = (float) obj.optDouble("reverbGain", 15.0);
+            int dacVol1 = obj.optInt("dacVol1", 8);
+            int dacVol2 = obj.optInt("dacVol2", 8);
+            int spatialGain = obj.optInt("spatialGain", 12);
+            int surround3D = obj.optInt("surround3D", 12);
+            saveProfileComplete(slotId, name, gains, compression, limiter, reverbMix, reverbGain, dacVol1, dacVol2, spatialGain, surround3D);
+        } catch (Exception e) {
+            Log.e(TAG, "Error en saveProfileJson: " + e.getMessage());
+        }
+    }
+
+    @JavascriptInterface
+    public boolean profileExists(int slotId) {
+        try {
+            SharedPreferences sp = mContext.getSharedPreferences("SoundAliveSlots", Context.MODE_PRIVATE);
+            return sp.contains("slot_" + slotId + "_gains") || sp.getBoolean("slot_" + slotId + "_exists", false);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @JavascriptInterface
