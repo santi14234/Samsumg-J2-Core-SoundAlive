@@ -171,13 +171,13 @@ public class AudioEffectsManager {
             Log.w(TAG, "EnvironmentalReverb init error: " + e.getMessage());
         }
 
-        // 5. PresetReverb (Using PRESET_CONCERTHALL for real Samsung SoundAlive Concert Hall feeling)
+        // 5. PresetReverb (Using PRESET_LARGEHALL for real Samsung SoundAlive Concert Hall feeling)
         try {
             PresetReverb rev = new PresetReverb(EFFECT_PRIORITY, sessionId);
-            rev.setPreset((short) (ambienteStrength > 0 ? PresetReverb.PRESET_CONCERTHALL : PresetReverb.PRESET_NONE));
+            rev.setPreset((short) (ambienteStrength > 0 ? PresetReverb.PRESET_LARGEHALL : PresetReverb.PRESET_NONE));
             rev.setEnabled(masterEnabled && ambienteStrength > 0);
             presetReverbs.put(sessionId, rev);
-            Log.d(TAG, "PresetReverb (CONCERTHALL) OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
+            Log.d(TAG, "PresetReverb (LARGEHALL) OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
         } catch (Exception e) {
             Log.w(TAG, "PresetReverb init error: " + e.getMessage());
         }
@@ -278,7 +278,7 @@ public class AudioEffectsManager {
         }
         for (PresetReverb r : presetReverbs.values()) {
             try {
-                r.setPreset((short) (active ? PresetReverb.PRESET_CONCERTHALL : PresetReverb.PRESET_NONE));
+                r.setPreset((short) (active ? PresetReverb.PRESET_LARGEHALL : PresetReverb.PRESET_NONE));
                 r.setEnabled(masterEnabled && active);
             } catch (Exception e) {
                 Log.w(TAG, "PresetReverb set error: " + e.getMessage());
@@ -424,12 +424,17 @@ public class AudioEffectsManager {
         if (env == null) return;
         try {
             double ratio = strength / 1000.0;
-            env.setRoomLevel((short) (-1000 + (ratio * 400)));
-            env.setRoomHFLevel((short) -500);
-            env.setReflectionsLevel((short) (-1200 + (ratio * 400)));
-            env.setReverbLevel((short) (-800 + (ratio * 400)));
-            env.setDecayTime((int)(1000 + (ratio * 1500)));
-            env.setDecayHFRatio((short) 750);
+            // Niveles en milibelios (100 mB = 1 dB). Rangos validos de Android:
+            // room -9000..0 | reflexiones -9000..1000 | reverb -9000..2000
+            // Antes el maximo era -4 dB (casi inaudible); ahora llega a 0 dB de sala y +12 dB de reverb.
+            env.setRoomLevel((short) (-1500 + (ratio * 1500)));
+            env.setRoomHFLevel((short) -300);
+            env.setReflectionsLevel((short) (-1000 + (ratio * 1000)));
+            env.setReverbLevel((short) (-600 + (ratio * 1800)));
+            env.setDecayTime((int) (1200 + (ratio * 2300)));
+            env.setDecayHFRatio((short) 800);
+            env.setDiffusion((short) 1000);
+            env.setDensity((short) 1000);
         } catch (Exception ignored) {}
     }
 
