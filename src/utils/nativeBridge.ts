@@ -1,23 +1,5 @@
 import { registerPlugin } from '@capacitor/core';
 
-// Direct Root WebView JavascriptInterface (window.AndroidAudio)
-declare global {
-  interface Window {
-    AndroidAudio?: {
-      isConnected(): boolean;
-      isRootDevice(): boolean;
-      setMasterPower(enabled: boolean): void;
-      updateAtmosphere(progress: number): void;
-      updateClarity(progress: number): void;
-      updateBassBoost(progress: number): void;
-      updateSurround(progress: number): void;
-      updateDynamicBoost(progress: number): void;
-      updateBandLevel(bandIndex: number, levelMillibels: number): void;
-      getStatus(): string;
-    };
-  }
-}
-
 export interface NativeEffectsStatus {
   masterEnabled: boolean;
   equalizerActive: boolean;
@@ -34,24 +16,6 @@ export interface NativeEffectsStatus {
   sessionsCount: number;
   activeSessions: number[];
   hardwareEngines: string[];
-  isAudioOutputActive?: boolean;
-  audioModifiedInSystem?: boolean;
-  eqLive?: boolean;
-  bassBoostLive?: boolean;
-  reverbLive?: boolean;
-  virtualizerLive?: boolean;
-  clarityLive?: boolean;
-  loudnessLive?: boolean;
-  gainLive?: boolean;
-  isAndroidGoDetected?: boolean;
-  hasEqualizerHardware?: boolean;
-  hasBassBoostHardware?: boolean;
-  hasVirtualizerHardware?: boolean;
-  hasReverbHardware?: boolean;
-  hasLoudnessEnhancerHardware?: boolean;
-  lastAudioFlingerError?: string;
-  isRootActive?: boolean;
-  bridgeConnected?: boolean;
 }
 
 interface SoundAliveSystemPlugin {
@@ -69,251 +33,65 @@ interface SoundAliveSystemPlugin {
   setSurround(options: { strength: number }): Promise<void>;
   setDynamicBoost(options: { strength: number }): Promise<void>;
   getEffectsStatus(): Promise<NativeEffectsStatus>;
+  // Bridge methods expected by App.tsx
+  updateControl(options: { controlName: string; value: number }): Promise<void>;
+  setBypass(options: { bypass: boolean }): Promise<void>;
+  forceAudioServerRestart(): Promise<void>;
+  saveProfileSlot(options: { slotIndex: number; profileData: string }): Promise<void>;
+  loadProfileSlot(options: { slotIndex: number }): Promise<{ profileData: string }>;
 }
 
 const SoundAliveSystem = registerPlugin<SoundAliveSystemPlugin>('SoundAliveSystem');
 
-export const isNativeAndroidApp = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  if ((window as any).AndroidAudio) return true;
-  const cap = (window as any).Capacitor;
-  return !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
-};
+export const nativeBridge = {
+  isNativeAndroidApp: () => {
+    if (typeof window === 'undefined') return false;
+    const cap = (window as any).Capacitor;
+    return !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
+  },
 
-export const hasDirectRootBridge = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  return !!(window as any).AndroidAudio;
-};
-
-export const checkWriteSettingsPermission = async (): Promise<boolean> => {
-  try {
-    const res = await SoundAliveSystem.canWriteSettings();
-    return !!res?.canWrite;
-  } catch {
-    return false;
-  }
-};
-
-export const openWriteSettingsScreen = async (): Promise<void> => {
-  try {
-    await SoundAliveSystem.openWriteSettings();
-  } catch (err) {
-    console.warn('Cannot open native settings:', err);
-  }
-};
-
-export const startNativeBackgroundService = async (): Promise<void> => {
-  // Purely ephemeral active-only processing
-};
-
-export const syncNativeMasterEnabled = async (enabled: boolean): Promise<void> => {
-  if (typeof window !== 'undefined' && window.AndroidAudio) {
-    try {
-      window.AndroidAudio.setMasterPower(enabled);
-    } catch (e) {
-      console.warn('AndroidAudio.setMasterPower error:', e);
+  updateControl: async (controlName: string, value: number) => {
+    if (nativeBridge.isNativeAndroidApp()) {
+      try { await SoundAliveSystem.updateControl({ controlName, value }); } catch (e) { console.error(e); }
+    } else {
+      console.log(`[Web Fallback] updateControl: ${controlName} = ${value}`);
     }
-  }
-  if (!isNativeAndroidApp()) return;
-  try {
-    await SoundAliveSystem.setMasterEnabled({ enabled });
-  } catch (err) {
-    console.warn('Native setMasterEnabled error:', err);
-  }
-};
+  },
 
-export const syncNativeSamsungDials = async (bassTreble: number, vocalInstrument: number): Promise<void> => {
-  if (!isNativeAndroidApp()) return;
-  try {
-    await SoundAliveSystem.setSamsungDials({ bassTreble, vocalInstrument });
-  } catch (err) {
-    console.warn('Native setSamsungDials error:', err);
-  }
-};
-
-export const syncNativeConcertHall = async (enabled: boolean): Promise<void> => {
-  if (typeof window !== 'undefined' && window.AndroidAudio) {
-    try {
-      window.AndroidAudio.updateAtmosphere(enabled ? 60 : 0);
-    } catch (e) {
-      console.warn('AndroidAudio.updateAtmosphere error:', e);
+  setBypass: async (bypass: boolean) => {
+    if (nativeBridge.isNativeAndroidApp()) {
+      try { await SoundAliveSystem.setBypass({ bypass }); } catch (e) { console.error(e); }
+    } else {
+      console.log(`[Web Fallback] setBypass: ${bypass}`);
     }
-  }
-  if (!isNativeAndroidApp()) return;
-  try {
-    await SoundAliveSystem.setConcertHall({ enabled });
-  } catch (err) {
-    console.warn('Native setConcertHall error:', err);
-  }
-};
+  },
 
-export const syncNativeGain = async (gainDb: number): Promise<void> => {
-  if (!isNativeAndroidApp()) return;
-  try {
-    const gain = Math.round(gainDb * 100);
-    await SoundAliveSystem.setGain({ gain });
-  } catch (err) {
-    console.warn('Native setGain error:', err);
-  }
-};
-
-export const syncNativeClarity = async (strength: number): Promise<void> => {
-  // strength is 0 - 1000, convert to 0 - 100% for direct bridge
-  const percent = Math.round(strength / 10);
-  if (typeof window !== 'undefined' && window.AndroidAudio) {
-    try {
-      window.AndroidAudio.updateClarity(percent);
-    } catch (e) {
-      console.warn('AndroidAudio.updateClarity error:', e);
+  forceAudioServerRestart: async () => {
+    if (nativeBridge.isNativeAndroidApp()) {
+      try { await SoundAliveSystem.forceAudioServerRestart(); } catch (e) { console.error(e); }
+    } else {
+      alert("Comando Root 'killall audioserver' ejecutado (Simulación Web)");
     }
-  }
-  if (!isNativeAndroidApp()) return;
-  try {
-    await SoundAliveSystem.setClarity({ strength });
-  } catch (err) {
-    console.warn('Native setClarity error:', err);
-  }
-};
+  },
 
-export const syncNativeAmbiente = async (strength: number): Promise<void> => {
-  // strength is 0 - 1000, convert to 0 - 10 FxSound scale for direct bridge
-  const val10 = Math.round(strength / 100);
-  if (typeof window !== 'undefined' && window.AndroidAudio) {
-    try {
-      window.AndroidAudio.updateAtmosphere(val10);
-    } catch (e) {
-      console.warn('AndroidAudio.updateAtmosphere error:', e);
+  saveProfileSlot: async (slotIndex: number, profileData: any) => {
+    const jsonStr = JSON.stringify(profileData);
+    if (nativeBridge.isNativeAndroidApp()) {
+      try { await SoundAliveSystem.saveProfileSlot({ slotIndex, profileData: jsonStr }); } catch (e) { console.error(e); }
+    } else {
+      localStorage.setItem(`profile_slot_${slotIndex}`, jsonStr);
     }
-  }
-  if (!isNativeAndroidApp()) return;
-  try {
-    await SoundAliveSystem.setAmbiente({ strength });
-  } catch (err) {
-    console.warn('Native setAmbiente error:', err);
-  }
-};
+  },
 
-export const syncNativeSurround = async (strength: number): Promise<void> => {
-  // strength is 0 - 1000, convert to 0 - 10 FxSound scale for direct bridge
-  const val10 = Math.round(strength / 100);
-  if (typeof window !== 'undefined' && window.AndroidAudio) {
-    try {
-      window.AndroidAudio.updateSurround(val10);
-    } catch (e) {
-      console.warn('AndroidAudio.updateSurround error:', e);
+  loadProfileSlot: async (slotIndex: number): Promise<any> => {
+    if (nativeBridge.isNativeAndroidApp()) {
+      try { 
+        const res = await SoundAliveSystem.loadProfileSlot({ slotIndex });
+        return res.profileData ? JSON.parse(res.profileData) : null;
+      } catch (e) { console.error(e); return null; }
+    } else {
+      const res = localStorage.getItem(`profile_slot_${slotIndex}`);
+      return res ? JSON.parse(res) : null;
     }
-  }
-  if (!isNativeAndroidApp()) return;
-  try {
-    await SoundAliveSystem.setSurround({ strength });
-  } catch (err) {
-    console.warn('Native setSurround error:', err);
-  }
-};
-
-export const syncNativeDynamicBoost = async (strength: number): Promise<void> => {
-  const percent = Math.round(strength / 10);
-  if (typeof window !== 'undefined' && window.AndroidAudio) {
-    try {
-      window.AndroidAudio.updateDynamicBoost(percent);
-    } catch (e) {
-      console.warn('AndroidAudio.updateDynamicBoost error:', e);
-    }
-  }
-  if (!isNativeAndroidApp()) return;
-  try {
-    await SoundAliveSystem.setDynamicBoost({ strength });
-  } catch (err) {
-    console.warn('Native setDynamicBoost error:', err);
-  }
-};
-
-export const syncNativeBassBoost = async (strength: number): Promise<void> => {
-  const percent = Math.round(strength / 10);
-  if (typeof window !== 'undefined' && window.AndroidAudio) {
-    try {
-      window.AndroidAudio.updateBassBoost(percent);
-    } catch (e) {
-      console.warn('AndroidAudio.updateBassBoost error:', e);
-    }
-  }
-  if (!isNativeAndroidApp()) return;
-  try {
-    await SoundAliveSystem.setBassBoost({ strength });
-  } catch (err) {
-    console.warn('Native setBassBoost error:', err);
-  }
-};
-
-export const syncNativeAmbientSound = syncNativeConcertHall;
-
-export const syncNativeBandLevel = async (band: number, dbGain: number): Promise<void> => {
-  const level = Math.round(dbGain * 100);
-  if (typeof window !== 'undefined' && window.AndroidAudio) {
-    try {
-      window.AndroidAudio.updateBandLevel(band, level);
-    } catch (e) {
-      console.warn('AndroidAudio.updateBandLevel error:', e);
-    }
-  }
-  if (!isNativeAndroidApp()) return;
-  try {
-    await SoundAliveSystem.setBandLevel({ band, level });
-  } catch (err) {
-    console.warn('Native setBandLevel error:', err);
-  }
-};
-
-export const getNativeEffectsStatus = async (): Promise<NativeEffectsStatus | null> => {
-  // If direct Root JavascriptInterface is present, pull instant status
-  if (typeof window !== 'undefined' && window.AndroidAudio) {
-    try {
-      const raw = window.AndroidAudio.getStatus();
-      const parsed = JSON.parse(raw);
-      return {
-        masterEnabled: parsed.masterEnabled !== false,
-        equalizerActive: !!parsed.equalizerActive,
-        equalizerBands: 9,
-        bassBoostSupported: true,
-        bassBoostActive: !!parsed.bassBoostActive,
-        bassBoostStrength: 500,
-        concertHallEnabled: !!parsed.reverbActive,
-        concertHallActive: !!parsed.reverbActive,
-        presetReverbSupported: true,
-        envReverbSupported: true,
-        roomAcousticSupported: true,
-        concertHallEngine: 'EnvironmentalReverb (Root Session 0)',
-        sessionsCount: 1,
-        activeSessions: [0],
-        hardwareEngines: ['Root Global AudioFX (Session 0)'],
-        isAudioOutputActive: true,
-        audioModifiedInSystem: true,
-        eqLive: !!parsed.masterEnabled,
-        bassBoostLive: !!parsed.masterEnabled,
-        reverbLive: !!parsed.masterEnabled,
-        virtualizerLive: !!parsed.masterEnabled,
-        clarityLive: !!parsed.masterEnabled,
-        loudnessLive: !!parsed.masterEnabled,
-        gainLive: !!parsed.masterEnabled,
-        isAndroidGoDetected: false,
-        hasEqualizerHardware: true,
-        hasBassBoostHardware: true,
-        hasVirtualizerHardware: true,
-        hasReverbHardware: true,
-        hasLoudnessEnhancerHardware: true,
-        isRootActive: !!parsed.isRootActive,
-        bridgeConnected: true,
-      };
-    } catch (e) {
-      console.warn('Direct bridge getStatus error:', e);
-    }
-  }
-
-  if (!isNativeAndroidApp()) return null;
-  try {
-    return await SoundAliveSystem.getEffectsStatus();
-  } catch (err) {
-    console.warn('Cannot get native effects status:', err);
-    return null;
   }
 };
