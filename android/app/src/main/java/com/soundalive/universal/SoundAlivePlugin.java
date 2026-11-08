@@ -133,8 +133,18 @@ public class SoundAlivePlugin extends Plugin {
 
     @PluginMethod
     public void startBackgroundService(PluginCall call) {
-        JSObject ret = new JSObject();
-        ret.put("started", false);
-        call.resolve(ret);
+        try {
+            Intent intent = new Intent(getContext(), SoundAliveService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.startForegroundService(getContext(), intent);
+            } else {
+                getContext().startService(intent);
+            }
+            JSObject ret = new JSObject();
+            ret.put("started", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Error al iniciar servicio: " + e.getMessage());
+        }
     }
 }

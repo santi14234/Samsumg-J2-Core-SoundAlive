@@ -1,4 +1,4 @@
-name: Compilar APK SoundAlive Pro
+name: Compilar APK SoundAlive Lite
 
 on:
   push:
@@ -18,17 +18,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Configurar Java JDK 17 (LTS)
-        uses: actions/setup-java@v5
+      - name: Configurar Java JDK 21 (LTS)
+        uses: actions/setup-java@v4
         with:
-          java-version: '17'
           distribution: 'temurin'
-
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: 'platforms;android-34 build-tools;34.0.0'
-          accept-android-sdk-licenses: true
+          java-version: '21'
 
       - name: Instalar dependencias
         run: npm install --legacy-peer-deps
@@ -45,17 +39,13 @@ jobs:
       - name: Compilar APK con Gradle
         run: |
           cd android
-          ./gradlew clean --no-daemon
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon
           cd ..
           mkdir -p output_apk
-          find android/app/build/outputs/apk -name "*.apk" -not -name "*unsigned*" -exec cp {} output_apk/SoundAlive-Pro.apk \;
-          if [ ! -f output_apk/SoundAlive-Pro.apk ]; then
-            find android/app/build/outputs/apk -name "*.apk" -exec cp {} output_apk/SoundAlive-Pro.apk \;
-          fi
+          find android/app/build/outputs/apk/debug -name "*.apk" -exec cp {} output_apk/SoundAlive-Lite.apk \;
 
-      - name: Subir APK SoundAlive Pro
+      - name: Subir APK SoundAlive Lite
         uses: actions/upload-artifact@v4
         with:
-          name: SoundAlive-Pro
-          path: output_apk/SoundAlive-Pro.apk
+          name: SoundAlive-Lite
+          path: output_apk/SoundAlive-Lite.apk

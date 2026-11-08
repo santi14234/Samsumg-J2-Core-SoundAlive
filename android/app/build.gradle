@@ -1,35 +1,30 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.sec.android.app.soundalive"
-    compileSdk 35
+    namespace = "com.soundalive.universal"
+    compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.sec.android.app.soundalive"
+        applicationId "com.soundalive.universal"
         minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion 35
-        versionCode 50
-        versionName "1.2.47"
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 29
+        versionName "1.2.26"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
-             // Exclude zips and unwanted files from APK packaging to ensure minimal APK size (<5MB)
-            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!*.zip:!*.yml'
-        }
-    }
-    signingConfigs {
-        debug {
-            // Android SDK built-in debug keystore
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
     lint {
         abortOnError false
@@ -64,11 +59,4 @@ try {
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
-}
-
-android {
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
 }
