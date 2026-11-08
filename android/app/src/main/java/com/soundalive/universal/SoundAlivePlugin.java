@@ -71,10 +71,88 @@ public class SoundAlivePlugin extends Plugin {
     }
 
     @PluginMethod
-    public void setDynamicBoost(PluginCall call) {
+    public void setLimiter(PluginCall call) {
         int strength = call.getInt("strength", 0);
-        AudioEffectsManager.getInstance().setDynamicBoost(strength);
+        AudioEffectsManager.getInstance().setLimiter(strength);
         call.resolve();
+    }
+
+    @PluginMethod
+    public void setRoomType(PluginCall call) {
+        int type = call.getInt("type", 1);
+        AudioEffectsManager.getInstance().setRoomType(type);
+        call.resolve();
+    }
+
+    /** Global Output (only): true = todas las apps (sesion 0), false = solo sesiones de reproductores. */
+    @PluginMethod
+    public void setGlobalOutputOnly(PluginCall call) {
+        boolean enabled = call.getBoolean("enabled", true);
+        AudioEffectsManager.getInstance().setGlobalOutputOnly(enabled);
+        JSObject ret = new JSObject();
+        ret.put("globalOnly", AudioEffectsManager.getInstance().isGlobalOutputOnly());
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void setBypass(PluginCall call) {
+        boolean bypass = call.getBoolean("bypass", false);
+        AudioEffectsManager.getInstance().setMasterEnabled(!bypass);
+        call.resolve();
+    }
+
+    /**
+     * Puente unico que usa la interfaz: controlName + value.
+     * band_0..band_8 (dB -10..10) | clarity, bassBoost, surround, roomMix, masterVolume, limiter (0..10) | room (1..5)
+     */
+    @PluginMethod
+    public void updateControl(PluginCall call) {
+        String name = call.getString("controlName", "");
+        Double raw = call.getDouble("value", 0.0);
+        double value = (raw == null) ? 0.0 : raw;
+        AudioEffectsManager m = AudioEffectsManager.getInstance();
+        int scaled = (int) Math.round(value * 100.0); // 0..10 -> 0..1000 ; dB -> milibelios
+
+        if (name != null && name.startsWith("band_")) {
+            try {
+                int idx = Integer.parseInt(name.substring(5));
+                m.setBandLevel((short) idx, (short) scaled);
+            } catch (NumberFormatException ignored) {}
+        } else if ("clarity".equals(name)) {
+            m.setClarity(scaled);
+        } else if ("bassBoost".equals(name)) {
+            m.setBassBoostStrength((short) scaled);
+        } else if ("surround".equals(name)) {
+            m.setSurround(scaled);
+        } else if ("roomMix".equals(name)) {
+            m.setAmbiente(scaled);
+        } else if ("room".equals(name)) {
+            m.setRoomType((int) Math.round(value));
+        } else if ("masterVolume".equals(name)) {
+            m.setGain(scaled);
+        } else if ("limiter".equals(name)) {
+            m.setLimiter(scaled);
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void saveProfileSlot(PluginCall call) {
+        int slot = call.getInt("slotIndex", 0);
+        String data = call.getString("profileData", "");
+        getContext().getSharedPreferences("SoundAliveProfiles", android.content.Context.MODE_PRIVATE)
+                .edit().putString("slot_" + slot, data).apply();
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void loadProfileSlot(PluginCall call) {
+        int slot = call.getInt("slotIndex", 0);
+        String data = getContext().getSharedPreferences("SoundAliveProfiles", android.content.Context.MODE_PRIVATE)
+                .getString("slot_" + slot, "");
+        JSObject ret = new JSObject();
+        ret.put("profileData", data);
+        call.resolve(ret);
     }
 
     @PluginMethod

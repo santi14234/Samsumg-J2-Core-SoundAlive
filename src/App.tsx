@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Sliders, 
   Bookmark, 
@@ -8,7 +8,7 @@ import {
   Sparkles, 
   Zap, 
   Activity, 
-  RotateCw, 
+  Radio, 
   Power, 
   MoreVertical,
   Check
@@ -20,6 +20,8 @@ export default function App() {
   const [activeSlot, setActiveSlot] = useState(1);
   const [showMenu, setShowMenu] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [globalOnly, setGlobalOnly] = useState(true);            // Global Output (only), como Eqfy
+  const [globalActive, setGlobalActive] = useState<boolean | null>(null); // null = no se sabe (navegador)
 
   // 9 EQ Bands (63Hz to 16kHz) range -10 to +10 dB
   const [bands, setBands] = useState<number[]>([0, 0, 0, 0, 0, 0, 0, 0, 0]);
@@ -64,6 +66,56 @@ export default function App() {
     setTimeout(() => setStatusMessage(null), 2500);
   };
 
+  const rooms = [
+    "Sala 1: Estudio",
+    "Sala 2: Habitación",
+    "Sala 3: Estudio Pro",
+    "Sala 4: Auditorio",
+    "Sala 5: Catedral/Arena"
+  ];
+
+  // Aplica un perfil completo a la interfaz y lo envía al motor de audio nativo
+  const applyProfile = (p: any) => {
+    const bandsIn: number[] = Array.isArray(p.bands) ? p.bands : [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    setBands(bandsIn);
+    if (p.clarity !== undefined) setClarity(p.clarity);
+    if (p.bassBoost !== undefined) setBassBoost(p.bassBoost);
+    if (p.surround !== undefined) setSurround(p.surround);
+    if (p.room !== undefined) setRoom(p.room);
+    if (p.roomMix !== undefined) setRoomMix(p.roomMix);
+    if (p.masterVolume !== undefined) setMasterVolume(p.masterVolume);
+    if (p.limiter !== undefined) setLimiter(p.limiter);
+
+    bandsIn.forEach((v, i) => nativeBridge.updateControl(`band_${i}`, v));
+    nativeBridge.updateControl('clarity', p.clarity ?? 0);
+    nativeBridge.updateControl('bassBoost', p.bassBoost ?? 0);
+    nativeBridge.updateControl('surround', p.surround ?? 0);
+    nativeBridge.updateControl('room', Math.max(1, rooms.indexOf(p.room) + 1));
+    nativeBridge.updateControl('roomMix', p.roomMix ?? 0);
+    nativeBridge.updateControl('masterVolume', p.masterVolume ?? 0);
+    nativeBridge.updateControl('limiter', p.limiter ?? 0);
+  };
+
+  const refreshStatus = async () => {
+    const st = await nativeBridge.getEffectsStatus();
+    if (!st) return;
+    if (typeof st.globalOnly === 'boolean') setGlobalOnly(st.globalOnly);
+    setGlobalActive(typeof st.globalActive === 'boolean' ? st.globalActive : null);
+  };
+
+  // Al abrir la app: cargar el Slot #1 guardado (o los valores por defecto) y sincronizar el motor
+  useEffect(() => {
+    (async () => {
+      const saved = await nativeBridge.loadProfileSlot(0);
+      const initial = saved ? { ...profiles[1], ...saved } : profiles[1];
+      if (saved) setProfiles(prev => ({ ...prev, 1: initial }));
+      applyProfile(initial);
+      nativeBridge.setBypass(false);
+      refreshStatus();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleBandChange = (index: number, value: number) => {
     const updated = [...bands];
     updated[index] = value;
@@ -92,28 +144,24 @@ export default function App() {
     flashMessage(`¡Configuración guardada en Slot #${slotNum}!`);
   };
 
-  const handleLoadSlot = (slotNum: number) => {
+  const handleLoadSlot = async (slotNum: number) => {
     setActiveSlot(slotNum);
-    const saved = profiles[slotNum] || nativeBridge.loadProfileSlot(slotNum - 1);
+    const saved = profiles[slotNum] || await nativeBridge.loadProfileSlot(slotNum - 1);
     if (saved) {
-      if (saved.bands) setBands(saved.bands);
-      if (saved.clarity !== undefined) setClarity(saved.clarity);
-      if (saved.bassBoost !== undefined) setBassBoost(saved.bassBoost);
-      if (saved.surround !== undefined) setSurround(saved.surround);
-      if (saved.room !== undefined) setRoom(saved.room);
-      if (saved.roomMix !== undefined) setRoomMix(saved.roomMix);
-      if (saved.masterVolume !== undefined) setMasterVolume(saved.masterVolume);
-      if (saved.limiter !== undefined) setLimiter(saved.limiter);
+      setProfiles(prev => ({ ...prev, [slotNum]: saved }));
+      applyProfile(saved);
       flashMessage(`Slot #${slotNum} cargado`);
     } else {
       flashMessage(`Slot #${slotNum} activado`);
     }
   };
 
-  const handleAudioServerRestart = () => {
-    setShowMenu(false);
-    nativeBridge.forceAudioServerRestart();
-    flashMessage("Comando: su -c killall audioserver ejecutado");
+  const handleGlobalToggle = async () => {
+    const next = !globalOnly;
+    setGlobalOnly(next);
+    await nativeBridge.setGlobalOutputOnly(next);
+    flashMessage(next ? "Global Output: afecta a todas las apps" : "Solo sesiones de reproductores");
+    refreshStatus();
   };
 
   const togglePower = () => {
@@ -145,7 +193,14 @@ export default function App() {
                 FXSOUND
               </span>
             </div>
-            <p className="text-[10px] text-gray-400 font-medium">Motor Samsung J2 Core (Root Global)</p>
+            <p className="text-[10px] text-gray-400 font-medium">
+              Motor Samsung J2 Core · {globalOnly ? 'Global Output' : 'Sesiones de reproductor'}
+              {globalOnly && globalActive !== null && (
+                <span className={globalActive ? 'text-[#00e676]' : 'text-amber-400'}>
+                  {globalActive ? ' · activo' : ' · sin control'}
+                </span>
+              )}
+            </p>
           </div>
         </div>
 
@@ -176,12 +231,20 @@ export default function App() {
             {showMenu && (
               <div className="absolute right-0 top-10 z-50 w-60 bg-[#1b1e22] border border-[#2e3338] rounded-xl shadow-2xl p-1.5 text-xs animate-in fade-in zoom-in-95">
                 <button
-                  onClick={handleAudioServerRestart}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-[#252a2f] text-gray-200 transition text-left"
+                  onClick={handleGlobalToggle}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg hover:bg-[#252a2f] text-gray-200 transition text-left"
                 >
-                  <RotateCw size={14} className="text-[#00e676]" />
-                  <span>Reinicio Forzado AudioServer</span>
+                  <span className="flex items-center gap-2">
+                    <Radio size={14} className="text-[#00e676]" />
+                    <span>Global Output (only)</span>
+                  </span>
+                  <span className={`relative w-9 h-5 rounded-full transition ${globalOnly ? 'bg-[#00e676]' : 'bg-[#33383f]'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${globalOnly ? 'left-[18px]' : 'left-0.5'}`} />
+                  </span>
                 </button>
+                <p className="px-3 pb-2 pt-1 text-[10px] text-gray-500 leading-snug">
+                  Activado: el ecualizador afecta el audio de todas las apps. Desactivado: solo los reproductores que lo soliciten.
+                </p>
               </div>
             )}
           </div>
@@ -341,7 +404,7 @@ export default function App() {
           <div>
             <div className="flex justify-between items-center text-xs mb-1.5">
               <span className="flex items-center gap-1.5 text-gray-300 font-medium">
-                <Globe size={13} className="text-[#00e676]" /> Sonido Envolvente 3D (Surround)
+                <Globe size={13} className="text-[#00e676]" /> Surround 3D (Ganancia del Reverb)
               </span>
               <span className="text-xs font-mono font-bold text-[#00e676]">{surround}</span>
             </div>
@@ -370,11 +433,9 @@ export default function App() {
               }}
               className="w-full bg-[#23272c] border border-[#33383f] text-gray-200 text-xs rounded-xl px-3 py-2 outline-none cursor-pointer"
             >
-              <option value="Sala 1: Estudio">Sala 1: Estudio</option>
-              <option value="Sala 2: Habitación">Sala 2: Habitación</option>
-              <option value="Sala 3: Estudio Pro">Sala 3: Estudio Pro</option>
-              <option value="Sala 4: Auditorio">Sala 4: Auditorio</option>
-              <option value="Sala 5: Catedral/Arena">Sala 5: Catedral/Arena</option>
+              {rooms.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
             </select>
 
             <div>

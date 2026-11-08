@@ -16,6 +16,8 @@ export interface NativeEffectsStatus {
   sessionsCount: number;
   activeSessions: number[];
   hardwareEngines: string[];
+  globalOnly?: boolean;
+  globalActive?: boolean;
 }
 
 interface SoundAliveSystemPlugin {
@@ -31,12 +33,13 @@ interface SoundAliveSystemPlugin {
   setClarity(options: { strength: number }): Promise<void>;
   setAmbiente(options: { strength: number }): Promise<void>;
   setSurround(options: { strength: number }): Promise<void>;
-  setDynamicBoost(options: { strength: number }): Promise<void>;
+  setLimiter(options: { strength: number }): Promise<void>;
+  setRoomType(options: { type: number }): Promise<void>;
+  setGlobalOutputOnly(options: { enabled: boolean }): Promise<{ globalOnly: boolean }>;
   getEffectsStatus(): Promise<NativeEffectsStatus>;
   // Bridge methods expected by App.tsx
   updateControl(options: { controlName: string; value: number }): Promise<void>;
   setBypass(options: { bypass: boolean }): Promise<void>;
-  forceAudioServerRestart(): Promise<void>;
   saveProfileSlot(options: { slotIndex: number; profileData: string }): Promise<void>;
   loadProfileSlot(options: { slotIndex: number }): Promise<{ profileData: string }>;
 }
@@ -66,12 +69,17 @@ export const nativeBridge = {
     }
   },
 
-  forceAudioServerRestart: async () => {
+  setGlobalOutputOnly: async (enabled: boolean) => {
     if (nativeBridge.isNativeAndroidApp()) {
-      try { await SoundAliveSystem.forceAudioServerRestart(); } catch (e) { console.error(e); }
+      try { await SoundAliveSystem.setGlobalOutputOnly({ enabled }); } catch (e) { console.error(e); }
     } else {
-      alert("Comando Root 'killall audioserver' ejecutado (Simulación Web)");
+      console.log(`[Web Fallback] setGlobalOutputOnly: ${enabled}`);
     }
+  },
+
+  getEffectsStatus: async (): Promise<NativeEffectsStatus | null> => {
+    if (!nativeBridge.isNativeAndroidApp()) return null;
+    try { return await SoundAliveSystem.getEffectsStatus(); } catch (e) { console.error(e); return null; }
   },
 
   saveProfileSlot: async (slotIndex: number, profileData: any) => {

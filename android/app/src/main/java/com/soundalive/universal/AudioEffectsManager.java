@@ -9,7 +9,6 @@ import android.media.audiofx.Equalizer;
 import android.media.audiofx.EnvironmentalReverb;
 import android.media.audiofx.LoudnessEnhancer;
 import android.media.audiofx.PresetReverb;
-import android.media.audiofx.Virtualizer;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -39,15 +38,17 @@ public class AudioEffectsManager {
     private final Map<Integer, LoudnessEnhancer> loudnessEnhancers = new HashMap<>();
     private final Map<Integer, PresetReverb> presetReverbs = new HashMap<>();
     private final Map<Integer, EnvironmentalReverb> envReverbs = new HashMap<>();
-    private final Map<Integer, Virtualizer> virtualizers = new HashMap<>();
+    private final Set<Integer> knownSessions = new HashSet<>(); // sesiones anunciadas por reproductores (modo no-global)
 
     private boolean masterEnabled = true;
     private short bassBoostStrength = 0; // 0 - 1000
     private int gainMillibels = 0; // -500 to +1200 mB
     private int clarityStrength = 0; // 0 - 1000 (Treble boost)
     private int ambienteStrength = 0; // 0 - 1000 (Reverb amount)
-    private int surroundStrength = 0; // 0 - 1000 (Virtualizer width)
-    private int dynamicBoostStrength = 0; // 0 - 1000 (Compression / Loudness)
+    private int surroundStrength = 0; // 0 - 1000 (Surround 3D = ganancia extra del Reverb, ya NO usa Virtualizer)
+    private int roomType = 1; // 1..5 (Estudio, Habitacion, Estudio Pro, Auditorio, Catedral)
+    private boolean globalOnly = true; // true = solo sesion 0 (Global Output, como Eqfy)
+    private int limiterStrength = 0; // 0 - 1000 (Limitador: reserva de margen contra saturacion)
 
     // Dual Dials
     private int dialBassTreble = 0;
@@ -74,7 +75,7 @@ public class AudioEffectsManager {
         if (this.appContext == null) {
             this.appContext = context.getApplicationContext();
             loadPreferences();
-            attachSession(0);
+            if (globalOnly) attachSession(0);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 try {
@@ -106,6 +107,11 @@ public class AudioEffectsManager {
     }
 
     public synchronized void attachSession(int sessionId) {
+        if (sessionId != 0) knownSessions.add(sessionId);
+        // Modo "Global Output (only)": solo se procesa la mezcla global (sesion 0)
+        if (globalOnly && sessionId != 0) return;
+        if (!globalOnly && sessionId == 0) return;
+
         if (activeSessions.contains(sessionId) && equalizers.containsKey(sessionId)) {
             Equalizer eq = equalizers.get(sessionId);
             if (eq != null) {
@@ -151,7 +157,7 @@ public class AudioEffectsManager {
         // 3. LoudnessEnhancer (Gain + Dynamic Boost)
         try {
             LoudnessEnhancer le = new LoudnessEnhancer(sessionId);
-            int totalGain = gainMillibels + (int)(dynamicBoostStrength * 0.5); // Add dynamic compression boost
+            int totalGain = computeTotalGain();
             le.setTargetGain(totalGain);
             le.setEnabled(masterEnabled && totalGain != 0);
             loudnessEnhancers.put(sessionId, le);
@@ -160,44 +166,36 @@ public class AudioEffectsManager {
             Log.w(TAG, "LoudnessEnhancer init error: " + e.getMessage());
         }
 
-        // 4. EnvironmentalReverb (Ambiente)
+        // 4. EnvironmentalReverb (Ambiente + Surround 3D = ganancia del reverb)
+        boolean envOk = false;
         try {
             EnvironmentalReverb env = new EnvironmentalReverb(EFFECT_PRIORITY, sessionId);
-            configureEnvironmentalReverb(env, ambienteStrength);
-            env.setEnabled(masterEnabled && ambienteStrength > 0);
+            configureEnvironmentalReverb(env);
+            env.setEnabled(masterEnabled && isReverbActive());
             envReverbs.put(sessionId, env);
-            Log.d(TAG, "EnvironmentalReverb OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
+            envOk = true;
+            Log.d(TAG, "EnvironmentalReverb OK on session " + sessionId);
         } catch (Exception e) {
             Log.w(TAG, "EnvironmentalReverb init error: " + e.getMessage());
         }
 
-        // 5. PresetReverb (Using PRESET_LARGEHALL for real Samsung SoundAlive Concert Hall feeling)
-        try {
-            PresetReverb rev = new PresetReverb(EFFECT_PRIORITY, sessionId);
-            rev.setPreset((short) (ambienteStrength > 0 ? PresetReverb.PRESET_LARGEHALL : PresetReverb.PRESET_NONE));
-            rev.setEnabled(masterEnabled && ambienteStrength > 0);
-            presetReverbs.put(sessionId, rev);
-            Log.d(TAG, "PresetReverb (LARGEHALL) OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
-        } catch (Exception e) {
-            Log.w(TAG, "PresetReverb init error: " + e.getMessage());
-        }
-
-        // 6. Virtualizer (Sonido Envolvente)
-        try {
-            Virtualizer virt = new Virtualizer(EFFECT_PRIORITY, sessionId);
-            if (virt.getStrengthSupported()) {
-                virt.setStrength((short) surroundStrength);
+        // 5. PresetReverb: solo de respaldo si el equipo no ofrece EnvironmentalReverb
+        if (!envOk) {
+            try {
+                PresetReverb rev = new PresetReverb(EFFECT_PRIORITY, sessionId);
+                rev.setPreset(isReverbActive() ? presetForRoom() : PresetReverb.PRESET_NONE);
+                rev.setEnabled(masterEnabled && isReverbActive());
+                presetReverbs.put(sessionId, rev);
+                Log.d(TAG, "PresetReverb (respaldo) OK on session " + sessionId);
+            } catch (Exception e) {
+                Log.w(TAG, "PresetReverb init error: " + e.getMessage());
             }
-            virt.setEnabled(masterEnabled && surroundStrength > 0);
-            virtualizers.put(sessionId, virt);
-            Log.d(TAG, "Virtualizer OK on session " + sessionId);
-        } catch (Exception e) {
-            Log.w(TAG, "Virtualizer init error: " + e.getMessage());
         }
     }
 
     public synchronized void detachSession(int sessionId) {
-        if (sessionId == 0) return;
+        if (sessionId != 0) knownSessions.remove(sessionId);
+        if (sessionId == 0 && globalOnly) return; // la sesion global no se suelta mientras el modo Global este activo
         activeSessions.remove(sessionId);
 
         Equalizer eq = equalizers.remove(sessionId);
@@ -215,12 +213,10 @@ public class AudioEffectsManager {
         PresetReverb r = presetReverbs.remove(sessionId);
         if (r != null) { try { r.release(); } catch (Exception ignored) {} }
 
-        Virtualizer v = virtualizers.remove(sessionId);
-        if (v != null) { try { v.release(); } catch (Exception ignored) {} }
     }
 
     public synchronized void ensureSession0Alive() {
-        if (!masterEnabled) return;
+        if (!masterEnabled || !globalOnly) return;
         try {
             Equalizer eq = equalizers.get(0);
             if (eq == null || !eq.hasControl()) {
@@ -235,42 +231,78 @@ public class AudioEffectsManager {
         this.masterEnabled = enabled;
         for (Equalizer eq : equalizers.values()) { try { eq.setEnabled(enabled); } catch (Exception ignored) {} }
         for (BassBoost bb : bassBoosts.values()) { try { bb.setEnabled(enabled && bassBoostStrength > 0); } catch (Exception ignored) {} }
-        for (LoudnessEnhancer le : loudnessEnhancers.values()) { try { le.setEnabled(enabled && (gainMillibels != 0 || dynamicBoostStrength > 0)); } catch (Exception ignored) {} }
-        for (EnvironmentalReverb env : envReverbs.values()) { try { env.setEnabled(enabled && ambienteStrength > 0); } catch (Exception ignored) {} }
-        for (PresetReverb r : presetReverbs.values()) { try { r.setEnabled(enabled && ambienteStrength > 0); } catch (Exception ignored) {} }
-        for (Virtualizer v : virtualizers.values()) { try { v.setEnabled(enabled && surroundStrength > 0); } catch (Exception ignored) {} }
+        for (LoudnessEnhancer le : loudnessEnhancers.values()) { try { le.setEnabled(enabled && computeTotalGain() != 0); } catch (Exception ignored) {} }
+        for (EnvironmentalReverb env : envReverbs.values()) { try { env.setEnabled(enabled && isReverbActive()); } catch (Exception ignored) {} }
+        for (PresetReverb r : presetReverbs.values()) { try { r.setEnabled(enabled && isReverbActive()); } catch (Exception ignored) {} }
         savePreferences();
     }
 
     public synchronized void setGain(int millibels) {
         this.gainMillibels = Math.max(-500, Math.min(1500, millibels));
+        refreshGain();
+        savePreferences();
+    }
+
+    /** Ganancia final = volumen maestro menos el margen que reserva el limitador segun el realce del EQ. */
+    private int computeTotalGain() {
+        int maxBoost = 0;
+        for (int i = 0; i < UI_FREQUENCIES_HZ.length; i++) {
+            maxBoost = Math.max(maxBoost, getUiVal(i));
+        }
+        int headroom = (int) Math.round((limiterStrength / 1000.0) * maxBoost);
+        return gainMillibels - headroom;
+    }
+
+    private void refreshGain() {
+        int totalGain = computeTotalGain();
         for (LoudnessEnhancer le : loudnessEnhancers.values()) {
             try {
-                int totalGain = this.gainMillibels + (int)(dynamicBoostStrength * 0.5);
                 le.setTargetGain(totalGain);
                 le.setEnabled(masterEnabled && totalGain != 0);
             } catch (Exception ignored) {}
         }
-        savePreferences();
     }
 
     public synchronized void setClarity(int strength) {
         this.clarityStrength = Math.max(0, Math.min(1000, strength));
-        // Boost high frequencies (8kHz and 16kHz) for FxSound Clarity
-        short boost = (short) Math.round((this.clarityStrength / 1000.0) * 800);
-        uiBandLevels.put((short) 7, boost);
-        uiBandLevels.put((short) 8, (short) Math.round(boost * 1.2));
+        // La claridad realza 8k/16k como desplazamiento aparte (ver getUiVal), sin tocar los sliders del usuario
         for (Equalizer eq : equalizers.values()) { applyAllBandsToEqualizer(eq); }
+        refreshGain();
         savePreferences();
     }
 
     public synchronized void setAmbiente(int strength) {
         this.ambienteStrength = Math.max(0, Math.min(1000, strength));
-        boolean active = ambienteStrength > 0;
-        Log.d(TAG, "setAmbiente strength: " + strength + ", active=" + active + ", envReverbs count: " + envReverbs.size() + ", presetReverbs count: " + presetReverbs.size());
+        applyReverb();
+        savePreferences();
+    }
+
+    public synchronized void setRoomType(int type) {
+        this.roomType = Math.max(1, Math.min(5, type));
+        applyReverb();
+        savePreferences();
+    }
+
+    /** Reverb activo si hay mezcla de sala o Surround 3D (que amplifica la ganancia del reverb). */
+    private boolean isReverbActive() {
+        return ambienteStrength > 0 || surroundStrength > 0;
+    }
+
+    private short presetForRoom() {
+        switch (roomType) {
+            case 1: return PresetReverb.PRESET_SMALLROOM;
+            case 2: return PresetReverb.PRESET_MEDIUMROOM;
+            case 3: return PresetReverb.PRESET_LARGEROOM;
+            case 4: return PresetReverb.PRESET_MEDIUMHALL;
+            default: return PresetReverb.PRESET_LARGEHALL;
+        }
+    }
+
+    private void applyReverb() {
+        boolean active = isReverbActive();
         for (EnvironmentalReverb env : envReverbs.values()) {
             try {
-                configureEnvironmentalReverb(env, ambienteStrength);
+                configureEnvironmentalReverb(env);
                 env.setEnabled(masterEnabled && active);
             } catch (Exception e) {
                 Log.w(TAG, "EnvironmentalReverb set error: " + e.getMessage());
@@ -278,13 +310,12 @@ public class AudioEffectsManager {
         }
         for (PresetReverb r : presetReverbs.values()) {
             try {
-                r.setPreset((short) (active ? PresetReverb.PRESET_LARGEHALL : PresetReverb.PRESET_NONE));
+                r.setPreset(active ? presetForRoom() : PresetReverb.PRESET_NONE);
                 r.setEnabled(masterEnabled && active);
             } catch (Exception e) {
                 Log.w(TAG, "PresetReverb set error: " + e.getMessage());
             }
         }
-        savePreferences();
     }
 
     public synchronized void setAmbientSound(boolean enabled) {
@@ -338,27 +369,40 @@ public class AudioEffectsManager {
         savePreferences();
     }
 
+    /** Surround 3D: amplifica la ganancia del Reverb (sin Virtualizer). */
     public synchronized void setSurround(int strength) {
         this.surroundStrength = Math.max(0, Math.min(1000, strength));
-        for (Virtualizer v : virtualizers.values()) {
-            try {
-                if (v.getStrengthSupported()) v.setStrength((short) surroundStrength);
-                v.setEnabled(masterEnabled && surroundStrength > 0);
-            } catch (Exception ignored) {}
+        applyReverb();
+        savePreferences();
+    }
+
+    public synchronized void setLimiter(int strength) {
+        this.limiterStrength = Math.max(0, Math.min(1000, strength));
+        refreshGain();
+        savePreferences();
+    }
+
+    /** Global Output (only): true = solo sesion 0 (todas las apps); false = solo sesiones de reproductores. */
+    public synchronized void setGlobalOutputOnly(boolean enabled) {
+        if (this.globalOnly == enabled) return;
+        this.globalOnly = enabled;
+        if (enabled) {
+            for (Integer id : new java.util.ArrayList<>(activeSessions)) {
+                if (id != 0) detachSession(id);
+            }
+            sessionQueue.clear();
+            attachSession(0);
+        } else {
+            detachSession(0);
+            for (Integer id : new java.util.ArrayList<>(knownSessions)) {
+                attachSession(id);
+            }
         }
         savePreferences();
     }
 
-    public synchronized void setDynamicBoost(int strength) {
-        this.dynamicBoostStrength = Math.max(0, Math.min(1000, strength));
-        for (LoudnessEnhancer le : loudnessEnhancers.values()) {
-            try {
-                int totalGain = gainMillibels + (int)(dynamicBoostStrength * 0.5);
-                le.setTargetGain(totalGain);
-                le.setEnabled(masterEnabled && totalGain != 0);
-            } catch (Exception ignored) {}
-        }
-        savePreferences();
+    public synchronized boolean isGlobalOutputOnly() {
+        return globalOnly;
     }
 
     public synchronized void setBassBoostStrength(short strength) {
@@ -376,12 +420,16 @@ public class AudioEffectsManager {
         if (uiBandIndex < 0 || uiBandIndex >= UI_FREQUENCIES_HZ.length) return;
         uiBandLevels.put(uiBandIndex, level);
         for (Equalizer eq : equalizers.values()) { applyAllBandsToEqualizer(eq); }
+        refreshGain();
         savePreferences();
     }
 
     private short getUiVal(int index) {
         Short val = uiBandLevels.get((short) index);
-        return (val != null) ? val : 0;
+        int v = (val != null) ? val : 0;
+        if (index == 7) v += (int) Math.round((clarityStrength / 1000.0) * 800);
+        if (index == 8) v += (int) Math.round((clarityStrength / 1000.0) * 960);
+        return (short) Math.max(-32768, Math.min(32767, v));
     }
 
     private short clamp(short val, short min, short max) {
@@ -420,19 +468,31 @@ public class AudioEffectsManager {
         } catch (Exception ignored) {}
     }
 
-    private void configureEnvironmentalReverb(EnvironmentalReverb env, int strength) {
+    private int clampMb(double v, int min, int max) {
+        return (int) Math.max(min, Math.min(max, Math.round(v)));
+    }
+
+    /**
+     * Mix (slider "Nivel de Ganancia") fija el nivel base del reverb.
+     * Surround 3D suma ganancia extra al reverb: hasta +10 dB en la sala y +15 dB en la cola.
+     * Rangos validos de Android (mB): room -9000..0 | reflexiones -9000..1000 | reverb -9000..2000
+     */
+    private void configureEnvironmentalReverb(EnvironmentalReverb env) {
         if (env == null) return;
         try {
-            double ratio = strength / 1000.0;
-            // Niveles en milibelios (100 mB = 1 dB). Rangos validos de Android:
-            // room -9000..0 | reflexiones -9000..1000 | reverb -9000..2000
-            // Antes el maximo era -4 dB (casi inaudible); ahora llega a 0 dB de sala y +12 dB de reverb.
-            env.setRoomLevel((short) (-1500 + (ratio * 1500)));
+            double mix = ambienteStrength / 1000.0;
+            double amp = surroundStrength / 1000.0;
+            int[] decay = {800, 1100, 1500, 2400, 4500};   // ms segun la sala elegida
+            int[] delay = {5, 8, 12, 20, 40};              // ms de retardo del reverb
+            int r = Math.max(1, Math.min(5, roomType)) - 1;
+
+            env.setRoomLevel((short) clampMb(-1500 + mix * 1500 + amp * 1000, -9000, 0));
             env.setRoomHFLevel((short) -300);
-            env.setReflectionsLevel((short) (-1000 + (ratio * 1000)));
-            env.setReverbLevel((short) (-600 + (ratio * 1800)));
-            env.setDecayTime((int) (1200 + (ratio * 2300)));
+            env.setReflectionsLevel((short) clampMb(-1000 + mix * 1000 + amp * 800, -9000, 1000));
+            env.setReverbLevel((short) clampMb(-600 + mix * 1800 + amp * 1500, -9000, 2000));
+            env.setDecayTime(decay[r]);
             env.setDecayHFRatio((short) 800);
+            env.setReverbDelay((short) delay[r]);
             env.setDiffusion((short) 1000);
             env.setDensity((short) 1000);
         } catch (Exception ignored) {}
@@ -446,8 +506,8 @@ public class AudioEffectsManager {
         obj.put("bassBoostSupported", true);
         obj.put("bassBoostActive", masterEnabled && bassBoostStrength > 0);
         obj.put("bassBoostStrength", (int) bassBoostStrength);
-        obj.put("concertHallEnabled", ambienteStrength > 0);
-        obj.put("concertHallActive", masterEnabled && ambienteStrength > 0);
+        obj.put("concertHallEnabled", isReverbActive());
+        obj.put("concertHallActive", masterEnabled && isReverbActive());
         obj.put("presetReverbSupported", true);
         obj.put("envReverbSupported", true);
         obj.put("roomAcousticSupported", true);
@@ -456,7 +516,13 @@ public class AudioEffectsManager {
         obj.put("clarity", clarityStrength);
         obj.put("ambiente", ambienteStrength);
         obj.put("surround", surroundStrength);
-        obj.put("dynamicBoost", dynamicBoostStrength);
+        obj.put("limiter", limiterStrength);
+        obj.put("roomType", roomType);
+        obj.put("globalOnly", globalOnly);
+        Equalizer globalEq = equalizers.get(0);
+        boolean globalActive = false;
+        try { globalActive = globalEq != null && globalEq.hasControl() && globalEq.getEnabled(); } catch (Exception ignored) {}
+        obj.put("globalActive", globalActive);
         obj.put("bassBoost", bassBoostStrength);
         obj.put("sessionsCount", activeSessions.size());
 
@@ -479,11 +545,6 @@ public class AudioEffectsManager {
             try { if (r.getEnabled() && r.hasControl()) { reverbLive = true; break; } } catch (Exception ignored) {}
         }
 
-        boolean virtualizerLive = false;
-        for (Virtualizer v : virtualizers.values()) {
-            try { if (v.getEnabled() && v.hasControl()) { virtualizerLive = true; break; } } catch (Exception ignored) {}
-        }
-
         boolean loudnessLive = false;
         for (LoudnessEnhancer le : loudnessEnhancers.values()) {
             try { if (le.getEnabled() && le.hasControl()) { loudnessLive = true; break; } } catch (Exception ignored) {}
@@ -502,10 +563,10 @@ public class AudioEffectsManager {
         }
 
         boolean bassBoostModified = (bassBoostStrength > 0);
-        boolean reverbModified = (ambienteStrength > 0);
-        boolean virtualizerModified = (surroundStrength > 0);
+        boolean reverbModified = isReverbActive();
+        boolean virtualizerModified = (surroundStrength > 0 && isReverbActive());
         boolean clarityModified = (clarityStrength > 0);
-        boolean loudnessModified = (dynamicBoostStrength > 0);
+        boolean loudnessModified = (limiterStrength > 0);
         boolean gainModified = (gainMillibels != 0);
 
         boolean audioModifiedInSystem = masterEnabled && (eqModified || bassBoostModified || reverbModified || virtualizerModified || clarityModified || loudnessModified || gainModified);
@@ -542,7 +603,6 @@ public class AudioEffectsManager {
             enginesArr.put("SoundAlive Bass Boost (Samsung)");
             enginesArr.put("FxSound LoudnessEnhancer (Preamp/Dynamic)");
             enginesArr.put("EnvironmentalReverb (Sonido Ambiental)");
-            enginesArr.put("Virtualizer (Sonido Envolvente)");
         }
         obj.put("hardwareEngines", enginesArr);
 
@@ -559,7 +619,9 @@ public class AudioEffectsManager {
             ed.putInt("clarity", clarityStrength);
             ed.putInt("ambiente", ambienteStrength);
             ed.putInt("surround", surroundStrength);
-            ed.putInt("dynamicBoost", dynamicBoostStrength);
+            ed.putInt("limiter", limiterStrength);
+            ed.putInt("roomType", roomType);
+            ed.putBoolean("globalOnly", globalOnly);
             ed.putInt("bassBoost", bassBoostStrength);
             for (Map.Entry<Short, Short> entry : uiBandLevels.entrySet()) {
                 ed.putInt("ui_band_" + entry.getKey(), entry.getValue());
@@ -577,7 +639,9 @@ public class AudioEffectsManager {
             clarityStrength = sp.getInt("clarity", 0);
             ambienteStrength = sp.getInt("ambiente", 0);
             surroundStrength = sp.getInt("surround", 0);
-            dynamicBoostStrength = sp.getInt("dynamicBoost", 0);
+            limiterStrength = sp.getInt("limiter", 0);
+            roomType = sp.getInt("roomType", 1);
+            globalOnly = sp.getBoolean("globalOnly", true);
             bassBoostStrength = (short) sp.getInt("bassBoost", 0);
 
             for (short b = 0; b < UI_FREQUENCIES_HZ.length; b++) {
