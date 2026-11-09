@@ -376,6 +376,12 @@ public class AudioEffectsManager {
         savePreferences();
     }
 
+    /** Alias antiguo: conservado para que clases viejas que aun lo llamen sigan compilando. */
+    @Deprecated
+    public synchronized void setDynamicBoost(int strength) {
+        setLimiter(strength);
+    }
+
     public synchronized void setLimiter(int strength) {
         this.limiterStrength = Math.max(0, Math.min(1000, strength));
         refreshGain();
