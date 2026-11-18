@@ -461,10 +461,10 @@ public class AudioEffectsManager {
         try {
             double ratio = strength / 1000.0;
             // Niveles al maximo (0 dB = 0 mB). La intensidad solo controla la duracion de la cola.
-            env.setRoomLevel((short) 50);
+            env.setRoomLevel((short) 25);
             env.setRoomHFLevel((short) 50);
-            env.setReflectionsLevel((short) 50);
-            env.setReverbLevel((short) 50);
+            env.setReflectionsLevel((short) 75);
+            env.setReverbLevel((short) 100);
             env.setDecayTime((int)(1000 + (ratio * 1500)));
             env.setDecayHFRatio((short) 750);
         } catch (Exception ignored) {}
