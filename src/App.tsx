@@ -58,6 +58,7 @@ export default function App() {
   const [surround, setSurround] = useState<number>(3);
   const [atmosphere, setAtmosphere] = useState<number>(3);
   const [volume, setVolume] = useState<number>(2);
+  const [mix, setMix] = useState<number>(10); // Mix del reverb (0-20), separado del volumen maestro
   const [normalization, setNormalization] = useState<number>(3);
 
   // 7 Slots Profile Management
@@ -114,8 +115,9 @@ export default function App() {
         setBassBoost(data.bass ?? 400);
         setSurround(data.surround ?? 300);
         setAtmosphere(data.roomType ?? 1); // roomType
-        setVolume(data.mixLevel ?? 3); // mixLevel
-        // setVolume(...) and setNormalization(...) from data if needed
+        setMix(data.mixLevel ?? 10); // mixLevel
+        setVolume(data.volume ?? 2);
+        setNormalization(data.normalization ?? 3);
       } catch (e) {
         console.warn('Load profile error:', e);
       }
@@ -127,7 +129,7 @@ export default function App() {
     setActiveSlot(slot);
     if (typeof window !== 'undefined' && (window as any).AndroidAudio) {
       try {
-        (window as any).AndroidAudio.saveProfile(slot, clarity, bassBoost, surround, atmosphere, volume, volume, normalization);
+        (window as any).AndroidAudio.saveProfile(slot, clarity, bassBoost, surround, atmosphere, mix, volume, normalization);
       } catch (e) {
         console.warn('Save profile error:', e);
       }
@@ -158,11 +160,11 @@ export default function App() {
       bridge.updateClarity(clarity);
       bridge.updateBassBoost(bassBoost);
       bridge.updateSurround(surround);
-      bridge.updateAtmosphere(atmosphere);
+      bridge.updateAtmosphere(atmosphere, mix);
       bridge.updateMasterVolume(volume);
       bridge.updateNormalization(normalization);
     }
-  }, [enabled, clarity, bassBoost, surround, atmosphere, volume, normalization]);
+  }, [enabled, clarity, bassBoost, surround, atmosphere, mix, volume, normalization]);
 
   // Periodic status poll
   useEffect(() => {
@@ -486,7 +488,7 @@ export default function App() {
                   const roomType = parseInt(e.target.value);
                   setAtmosphere(roomType);
                   if (enabled && typeof window !== 'undefined' && (window as any).AndroidAudio) {
-                    (window as any).AndroidAudio.updateAtmosphere(roomType, volume);
+                    (window as any).AndroidAudio.updateAtmosphere(roomType, mix);
                   }
                 }}
               >
@@ -499,17 +501,17 @@ export default function App() {
 
               <div className="flex items-center justify-between text-xs pt-2">
                 <span className="text-neutral-300 font-medium text-[10px]">Nivel de Ganancia (Mix)</span>
-                <span className="text-emerald-400 font-bold font-mono text-sm">{volume}</span>
+                <span className="text-emerald-400 font-bold font-mono text-sm">{mix}</span>
               </div>
               <input
                 type="range"
                 min="0"
-                max="10"
+                max="20"
                 step="1"
-                value={volume}
+                value={mix}
                 onChange={(e) => {
                   const val = parseInt(e.target.value);
-                  setVolume(val);
+                  setMix(val);
                   if (enabled && typeof window !== 'undefined' && (window as any).AndroidAudio) {
                     (window as any).AndroidAudio.updateAtmosphere(atmosphere, val);
                   }
