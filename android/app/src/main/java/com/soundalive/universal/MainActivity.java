@@ -23,6 +23,18 @@ public class MainActivity extends BridgeActivity {
 
         AudioEffectsManager.getInstance().init(this);
 
+        // Servicio en primer plano: mantiene los efectos vivos aunque cierres la pantalla
+        try {
+            Intent svc = new Intent(this, SoundAliveService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(svc);
+            } else {
+                startService(svc);
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "No se pudo iniciar el servicio: " + e.getMessage());
+        }
+
         // Configure WebView for reliable local asset loading (fixes black screen on Galaxy J2 Core)
         try {
             WebView webView = getBridge().getWebView();
@@ -86,22 +98,9 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
-        // 1. Liberación absoluta de todos los efectos nativos al cerrar la app
-        try {
-            if (mWebAppInterface != null) {
-                mWebAppInterface.release();
-                mWebAppInterface = null;
-            }
-            AudioEffectsManager.getInstance().release();
-        } catch (Throwable ignored) {}
-
+        // Ya NO se liberan los efectos ni se mata el proceso: el servicio en primer plano
+        // los mantiene vivos al cerrar la pantalla (antes aqui se apagaba todo).
+        mWebAppInterface = null;
         super.onDestroy();
-
-        // 2. Matar el proceso y liberar toda la memoria RAM de inmediato
-        try {
-            android.os.Process.killProcess(android.os.Process.myPid());
-        } catch (Throwable ignored) {
-            System.exit(0);
-        }
     }
 }

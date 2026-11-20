@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
@@ -16,6 +17,11 @@ import androidx.core.app.NotificationCompat;
 public class SoundAliveService extends Service {
     public static final String CHANNEL_ID = "soundalive_service_channel";
     public static final int NOTIFICATION_ID = 1001;
+
+    // Desde Android 8 los broadcasts implicitos NO llegan a receivers del manifest:
+    // hay que registrar el receiver en tiempo de ejecucion, dentro del servicio.
+    private final AudioEffectReceiver sessionReceiver = new AudioEffectReceiver();
+    private boolean receiverRegistered = false;
 
     @Override
     public void onCreate() {
@@ -36,6 +42,25 @@ public class SoundAliveService extends Service {
                 startForeground(NOTIFICATION_ID, notification);
             } catch (Exception ignored) {}
         }
+
+        try {
+            IntentFilter filter = new IntentFilter();
+            filter.addAction(AudioEffectReceiver.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION);
+            filter.addAction(AudioEffectReceiver.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION);
+            filter.addAction(AudioEffectReceiver.ACTION_OPEN_AUDIO_EFFECT_CONTROL_PANEL);
+            filter.addAction(AudioEffectReceiver.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_PANEL);
+            registerReceiver(sessionReceiver, filter);
+            receiverRegistered = true;
+        } catch (Exception ignored) {}
+    }
+
+    @Override
+    public void onDestroy() {
+        if (receiverRegistered) {
+            try { unregisterReceiver(sessionReceiver); } catch (Exception ignored) {}
+            receiverRegistered = false;
+        }
+        super.onDestroy();
     }
 
     @Override
