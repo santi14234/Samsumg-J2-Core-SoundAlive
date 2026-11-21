@@ -41,6 +41,13 @@ public class AudioEffectsManager {
     private final Map<Integer, EnvironmentalReverb> envReverbs = new HashMap<>();
     private final Map<Integer, Virtualizer> virtualizers = new HashMap<>();
 
+    // Libreria nativa SoundAlive FX (modulo de Magisk). Si esta instalada reemplaza a los efectos de
+    // Android en cada sesion; si no, todo funciona como antes. Pon false para usar SIEMPRE los de Android.
+    private static final boolean USE_NATIVE_FX = true;
+    // Ajuste fino del nivel del ambiente nativo (mB). Si suena muy fuerte: -300, -600...
+    private static final int NATIVE_WET_OFFSET_MB = 0;
+    private final Map<Integer, NativeFx> nativeFx = new HashMap<>();
+
     private boolean masterEnabled = true;
     private short bassBoostStrength = 0; // 0 - 1000
     private int gainMillibels = 0; // -500 to +1200 mB
@@ -131,6 +138,26 @@ public class AudioEffectsManager {
     }
 
     public synchronized void attachSession(int sessionId) {
+        if (USE_NATIVE_FX && sessionId != 0) {
+            NativeFx existing = nativeFx.get(sessionId);
+            if (existing != null) {
+                existing.setEnabled(masterEnabled);
+                pushNativeParams(existing);
+                return;
+            }
+            if (!equalizers.containsKey(sessionId) && NativeFx.isAvailable()) {
+                NativeFx n = NativeFx.create(sessionId);
+                if (n != null) {
+                    nativeFx.put(sessionId, n);
+                    activeSessions.add(sessionId);
+                    pushNativeParams(n);
+                    n.setEnabled(masterEnabled);
+                    Log.d(TAG, "SoundAlive FX nativo en la sesion " + sessionId);
+                    return;
+                }
+                // si falla, se usan los efectos de Android como antes
+            }
+        }
         if (activeSessions.contains(sessionId) && equalizers.containsKey(sessionId)) {
             Equalizer eq = equalizers.get(sessionId);
             if (eq != null) {
@@ -256,12 +283,15 @@ public class AudioEffectsManager {
 
     /** true si ya hay efectos puestos en esa sesion (por ejemplo porque el reproductor la aviso). */
     public synchronized boolean isSessionAttached(int sessionId) {
-        return sessionId != 0 && (activeSessions.contains(sessionId) || equalizers.containsKey(sessionId));
+        return sessionId != 0 && (activeSessions.contains(sessionId) || equalizers.containsKey(sessionId) || nativeFx.containsKey(sessionId));
     }
 
     public synchronized void detachSession(int sessionId) {
         if (sessionId == 0) return;
         activeSessions.remove(sessionId);
+
+        NativeFx nfx = nativeFx.remove(sessionId);
+        if (nfx != null) { nfx.release(); }
 
         Equalizer eq = equalizers.remove(sessionId);
         if (eq != null) { try { eq.release(); } catch (Exception ignored) {} }
@@ -296,6 +326,7 @@ public class AudioEffectsManager {
 
     public synchronized void setMasterEnabled(boolean enabled) {
         this.masterEnabled = enabled;
+        for (NativeFx n : nativeFx.values()) { n.setEnabled(enabled); }
         for (Equalizer eq : equalizers.values()) { try { eq.setEnabled(enabled); } catch (Exception ignored) {} }
         for (BassBoost bb : bassBoosts.values()) { try { bb.setEnabled(enabled && bassBoostStrength > 0); } catch (Exception ignored) {} }
         int lg = computeLoudnessGain();
@@ -327,7 +358,50 @@ public class AudioEffectsManager {
         return Math.max(-500, Math.min(1800, total));
     }
 
+    // ------------------------------------------------------------------ motor nativo (SoundAlive FX)
+
+    /** Ganancia final del motor nativo: volumen maestro + normalizacion (sin la compensacion del Bundle de Android). */
+    private int computeNativeGain() {
+        int total = gainMillibels + (int) (dynamicBoostStrength * 0.5) + (int) (normalizationStrength * 0.6);
+        return Math.max(-500, Math.min(1800, total));
+    }
+
+    /** Nivel del ambiente en mB segun el slider Mix (0..20); mismo mapa que el reverb de Android. */
+    private int nativeWetMb() {
+        if (ambienteStrength <= 0) return -9999;
+        double mixPos = Math.min(2000, ambienteStrength) / 100.0;
+        double wet;
+        if (mixPos <= 10) {
+            wet = -3000 + (mixPos / 10.0) * (3000 + REVERB_AT_10_MB);
+        } else {
+            wet = REVERB_AT_10_MB + ((mixPos - 10) / 10.0) * (REVERB_MAX_MB - REVERB_AT_10_MB);
+        }
+        return (int) Math.round(wet) + NATIVE_WET_OFFSET_MB;
+    }
+
+    private void pushNativeParams(NativeFx n) {
+        // 10 bandas del motor (31 Hz ... 16 kHz) a partir de las 9 de la pantalla (63 Hz ... 16 kHz):
+        // la de 31 Hz sigue a la de 63 Hz a la mitad.
+        for (int b = 0; b < 10; b++) {
+            int mb = (b == 0) ? getUiVal(0) / 2 : getUiVal(b - 1);
+            n.set(NativeFx.P_EQ_BAND, b, mb);
+        }
+        n.set(NativeFx.P_EQ_ENABLE, 0, 1);
+        n.set(NativeFx.P_SURROUND, 0, virtStrength());
+        n.set(NativeFx.P_WET_MB, 0, nativeWetMb());
+        n.set(NativeFx.P_ROOM, 0, roomType);
+        n.set(NativeFx.P_POST_GAIN_MB, 0, computeNativeGain());
+        n.set(NativeFx.P_LIMITER, 0, 1);
+        n.set(NativeFx.P_MODULATION, 0, 600);
+        n.set(NativeFx.P_WIDTH, 0, 1000);
+    }
+
+    private void pushNativeAll() {
+        for (NativeFx n : nativeFx.values()) { pushNativeParams(n); }
+    }
+
     private void applyLoudness() {
+        pushNativeAll();
         int g = computeLoudnessGain();
         for (LoudnessEnhancer le : loudnessEnhancers.values()) {
             try {
@@ -340,6 +414,7 @@ public class AudioEffectsManager {
     public synchronized void setClarity(int strength) {
         this.clarityStrength = Math.max(0, Math.min(1000, strength));
         for (Equalizer eq : equalizers.values()) { applyAllBandsToEqualizer(eq); }
+        pushNativeAll();
         savePreferences();
     }
 
@@ -369,6 +444,7 @@ public class AudioEffectsManager {
                 Log.w(TAG, "PresetReverb set error: " + e.getMessage());
             }
         }
+        pushNativeAll();
         savePreferences();
     }
 
@@ -438,6 +514,7 @@ public class AudioEffectsManager {
                 v.setEnabled(masterEnabled && surroundStrength > 0);
             } catch (Exception ignored) {}
         }
+        pushNativeAll();
         savePreferences();
     }
 
@@ -469,6 +546,7 @@ public class AudioEffectsManager {
         if (uiBandIndex < 0 || uiBandIndex >= UI_FREQUENCIES_HZ.length) return;
         uiBandLevels.put(uiBandIndex, level);
         for (Equalizer eq : equalizers.values()) { applyAllBandsToEqualizer(eq); }
+        pushNativeAll();
         savePreferences();
     }
 
@@ -735,6 +813,8 @@ public class AudioEffectsManager {
             Virtualizer v = virtualizers.remove(sessionId);
             if (v != null) { try { v.setEnabled(false); v.release(); } catch (Exception ignored) {} }
         }
+        for (NativeFx n : nativeFx.values()) { n.release(); }
+        nativeFx.clear();
         activeSessions.clear();
         equalizers.clear();
         bassBoosts.clear();
