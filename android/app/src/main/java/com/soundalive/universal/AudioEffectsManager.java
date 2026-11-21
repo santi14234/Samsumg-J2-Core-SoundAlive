@@ -56,6 +56,11 @@ public class AudioEffectsManager {
     //   0..10  -> de -30 dB hasta REVERB_AT_10_MB   (el +3 dB que te gustaba)
     //   10..20 -> de REVERB_AT_10_MB hasta REVERB_MAX_MB (+20 dB es el maximo que permite Android)
     // Si satura, baja REVERB_MAX_MB.
+    // Capa de graves: el slider "Refuerzo de Graves" tambien sube estas bandas (parlantes chicos
+    // casi no reproducen 63 Hz, el cuerpo del bajo esta en 125-250 Hz). Multiplicadores sobre +8 dB.
+    private static final double BASS_LAYER_63 = 0.3;
+    private static final double BASS_LAYER_125 = 1.0;
+    private static final double BASS_LAYER_250 = 0.5;
     private static final int REVERB_AT_10_MB = 300;
     private static final int REVERB_MAX_MB = 2000;
     private static final int REFLECTIONS_MAX_MB = 500;
@@ -64,6 +69,7 @@ public class AudioEffectsManager {
     private int dialBassTreble = 0;
     private int dialVocalInstrument = 0;
     private boolean isBasicMode = true;
+    private boolean dialsUsed = false; // true solo si se usaron las perillas basicas (setSamsungDials)
 
     private final Map<Short, Short> uiBandLevels = new HashMap<>();
     private Context appContext;
@@ -244,6 +250,15 @@ public class AudioEffectsManager {
         }
     }
 
+    public synchronized boolean isMasterEnabled() {
+        return masterEnabled;
+    }
+
+    /** true si ya hay efectos puestos en esa sesion (por ejemplo porque el reproductor la aviso). */
+    public synchronized boolean isSessionAttached(int sessionId) {
+        return sessionId != 0 && (activeSessions.contains(sessionId) || equalizers.containsKey(sessionId));
+    }
+
     public synchronized void detachSession(int sessionId) {
         if (sessionId == 0) return;
         activeSessions.remove(sessionId);
@@ -307,7 +322,7 @@ public class AudioEffectsManager {
         }
         // El Bundle de Android baja el volumen general cuando subes bandas o bass boost.
         // Esto lo compensa solo (valores de partida, ajustar de oido).
-        int makeup = (int) (maxBoost * 0.8) + (int) (bassBoostStrength * 0.3);
+        int makeup = (int) (maxBoost * 0.8) + (int) (bassBoostStrength * 0.15);
         int total = gainMillibels + master + norm + makeup;
         return Math.max(-500, Math.min(1800, total));
     }
@@ -367,6 +382,7 @@ public class AudioEffectsManager {
 
     public synchronized void setSamsungDials(int bassTreble, int vocalInstrument) {
         this.isBasicMode = true;
+        this.dialsUsed = true;
         this.dialBassTreble = Math.max(-100, Math.min(100, bassTreble));
         this.dialVocalInstrument = Math.max(-100, Math.min(100, vocalInstrument));
 
@@ -444,6 +460,7 @@ public class AudioEffectsManager {
                 if (bb.getStrengthSupported()) bb.setStrength(bassBoostStrength);
             } catch (Exception ignored) {}
         }
+        for (Equalizer eq : equalizers.values()) { applyAllBandsToEqualizer(eq); }
         applyLoudness();
         savePreferences();
     }
@@ -461,6 +478,12 @@ public class AudioEffectsManager {
         double boost = (clarityStrength / 1000.0) * 800; // Claridad: suma sobre 8k y 16k
         if (index == 7) v += (int) Math.round(boost);
         if (index == 8) v += (int) Math.round(boost * 1.2);
+        if (!dialsUsed) {
+            double bass = (bassBoostStrength / 1000.0) * 800;
+            if (index == 0) v += (int) Math.round(bass * BASS_LAYER_63);
+            if (index == 1) v += (int) Math.round(bass * BASS_LAYER_125);
+            if (index == 2) v += (int) Math.round(bass * BASS_LAYER_250);
+        }
         return (short) Math.max(-3000, Math.min(3000, v));
     }
 

@@ -52,10 +52,14 @@ public class SoundAliveService extends Service {
             registerReceiver(sessionReceiver, filter);
             receiverRegistered = true;
         } catch (Exception ignored) {}
+
+        // Busca con root las sesiones de apps que no avisan (YouTube, emuladores...)
+        SessionScanner.getInstance().start();
     }
 
     @Override
     public void onDestroy() {
+        SessionScanner.getInstance().stop();
         if (receiverRegistered) {
             try { unregisterReceiver(sessionReceiver); } catch (Exception ignored) {}
             receiverRegistered = false;
