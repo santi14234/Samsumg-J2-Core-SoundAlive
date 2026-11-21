@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   syncNativeMasterEnabled,
   syncNativeClarity,
@@ -165,6 +165,31 @@ export default function App() {
       bridge.updateNormalization(normalization);
     }
   }, [enabled, clarity, bassBoost, surround, atmosphere, mix, volume, normalization]);
+
+  // Al abrir la app, reenviar todos los valores al motor nativo. Antes solo se enviaban al mover
+  // un slider o al encender, asi que tras reiniciar el motor podia quedar con graves/envolvente en 0.
+  const latestValues = useRef({ enabled, clarity, bassBoost, surround, atmosphere, mix, volume, normalization, bandLevels });
+  latestValues.current = { enabled, clarity, bassBoost, surround, atmosphere, mix, volume, normalization, bandLevels };
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const v = latestValues.current;
+      if (!v.enabled || typeof window === 'undefined' || !(window as any).AndroidAudio) return;
+      const bridge = (window as any).AndroidAudio;
+      try {
+        syncNativeMasterEnabled(true);
+        bridge.updateClarity(v.clarity);
+        bridge.updateBassBoost(v.bassBoost);
+        bridge.updateSurround(v.surround);
+        bridge.updateAtmosphere(v.atmosphere, v.mix);
+        bridge.updateMasterVolume(v.volume);
+        bridge.updateNormalization(v.normalization);
+        v.bandLevels.forEach((db, i) => syncNativeBandLevel(i, db));
+      } catch (e) {
+        console.warn('Startup sync error:', e);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Periodic status poll
   useEffect(() => {
