@@ -289,7 +289,9 @@ export default function App() {
       </header>
 
       {/* Main Container */}
-      <div className="flex-1 max-w-md mx-auto w-full px-4 py-4 flex flex-col gap-4">
+      <div className="flex-1 w-full max-w-md landscape:max-w-none mx-auto px-4 landscape:px-5 py-4 flex flex-col gap-4 landscape:grid landscape:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] landscape:items-start landscape:gap-5">
+        {/* Columna izquierda: perfiles + ecualizador */}
+        <div className="flex flex-col gap-4 min-w-0">
         {/* 7 Slots Profile Selector */}
         <section className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-3 flex flex-col gap-2">
           <div className="flex items-center justify-between">
@@ -371,13 +373,13 @@ export default function App() {
               const level = bandLevels[idx] || 0;
               return (
                 <div key={freq.label} className="flex-1 flex flex-col items-center gap-2">
-                  <span className={`text-[9px] font-mono font-bold leading-none ${
+                  <span className={`text-[9px] landscape:text-[11px] font-mono font-bold leading-none ${
                     level > 0 ? 'text-emerald-400' : level < 0 ? 'text-amber-400' : 'text-neutral-500'
                   }`}>
                     {level > 0 ? `+${level}` : level}
                   </span>
 
-                  <div className="h-28 flex items-center justify-center relative">
+                  <div className="h-28 landscape:h-44 flex items-center justify-center relative">
                     <div className="absolute w-2.5 h-[1px] bg-neutral-700/70 pointer-events-none top-1/2 -translate-y-1/2" />
                     
                     <input
@@ -387,7 +389,7 @@ export default function App() {
                       step="1"
                       value={level}
                       onChange={(e) => handleBandChange(idx, parseInt(e.target.value))}
-                      className="accent-emerald-500 bg-neutral-800/90 rounded-lg cursor-pointer h-24 w-1.5"
+                      className="accent-emerald-500 bg-neutral-800/90 rounded-lg cursor-pointer h-24 landscape:h-40 w-1.5 landscape:w-2"
                       style={{
                         WebkitAppearance: 'slider-vertical',
                         writingMode: 'vertical-lr',
@@ -396,7 +398,7 @@ export default function App() {
                     />
                   </div>
 
-                  <span className="text-[9px] font-medium text-neutral-400 tracking-tight leading-none">
+                  <span className="text-[9px] landscape:text-[11px] font-medium text-neutral-400 tracking-tight leading-none">
                     {freq.short}
                   </span>
                 </div>
@@ -404,7 +406,10 @@ export default function App() {
             })}
           </div>
         </section>
+        </div>
 
+        {/* Columna derecha: procesamiento FxSound + estado */}
+        <div className="flex flex-col gap-4 min-w-0">
         {/* FxSound Sliders Section (0 - 10 Scale) */}
         <section className={`bg-neutral-900/50 border border-neutral-800 rounded-2xl p-4 flex flex-col gap-4 transition-opacity duration-300 ${
           enabled ? 'opacity-100' : 'opacity-40 pointer-events-none'
@@ -622,6 +627,7 @@ export default function App() {
             </span>
           </div>
         </section>
+        </div>
       </div>
 
       {/* Footer */}
