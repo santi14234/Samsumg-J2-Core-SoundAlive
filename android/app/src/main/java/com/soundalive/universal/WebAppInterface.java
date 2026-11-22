@@ -55,53 +55,8 @@ public class WebAppInterface {
     }
 
     private synchronized void inicializarMotoresAudio() {
-        try {
-            // Inicializar Reverb con prioridad alta (1) y sesión global 0
-            mReverb = new EnvironmentalReverb(1, 0);
-            if (mReverb != null) {
-                mReverb.setEnabled(mMasterEnabled);
-            }
-        } catch (Throwable t) {
-            mReverb = null;
-        }
-
-        try {
-            // Inicializar Virtualizador 3D con prioridad secundaria (2) en canal separado
-            mVirtualizer = new Virtualizer(2, 0);
-            if (mVirtualizer != null) {
-                mVirtualizer.setEnabled(mMasterEnabled);
-            }
-        } catch (Throwable t) {
-            mVirtualizer = null;
-        }
-
-        try {
-            mBassBoost = new BassBoost(0, 0);
-            if (mBassBoost != null) {
-                mBassBoost.setEnabled(mMasterEnabled);
-            }
-        } catch (Throwable t) {
-            mBassBoost = null;
-        }
-
-        try {
-            mEqualizer = new Equalizer(0, 0);
-            if (mEqualizer != null) {
-                mEqualizer.setEnabled(mMasterEnabled);
-            }
-        } catch (Throwable t) {
-            mEqualizer = null;
-        }
-
-        try {
-            mLoudness = new LoudnessEnhancer(0);
-            if (mLoudness != null) {
-                mLoudness.setEnabled(mMasterEnabled);
-            }
-        } catch (Throwable t) {
-            mLoudness = null;
-        }
-
+        // Un solo dueno de los efectos: AudioEffectsManager (antes habia un segundo juego
+        // de Equalizer/BassBoost/Virtualizer/Reverb/Loudness en sesion 0 que se pisaba con este).
         try {
             AudioEffectsManager.getInstance().init(mContext);
         } catch (Throwable ignored) {}
@@ -120,224 +75,65 @@ public class WebAppInterface {
     @JavascriptInterface
     public void setMasterPower(boolean enabled) {
         this.mMasterEnabled = enabled;
-        mMainHandler.post(() -> {
-            try {
-                if (mReverb != null) mReverb.setEnabled(enabled);
-                if (mVirtualizer != null) mVirtualizer.setEnabled(enabled);
-                if (mBassBoost != null) mBassBoost.setEnabled(enabled);
-                if (mEqualizer != null) mEqualizer.setEnabled(enabled);
-                if (mLoudness != null) mLoudness.setEnabled(enabled);
-            } catch (Throwable ignored) {}
-        });
         AudioEffectsManager.getInstance().setMasterEnabled(enabled);
     }
 
-    // 1. CLARIDAD VOCAL (0 a 10) -> Altera bandas de frecuencias altas (agudos superiores 4kHz - 16kHz)
+    private int mLastRoomType = 1;
+    private int mLastReverbMix = 3;
+
+    // 1. CLARIDAD VOCAL (0 a 10)
     @JavascriptInterface
     public void updateClarity(int progress) {
-        mMainHandler.post(() -> {
-            try {
-                if (mEqualizer == null && progress > 0) {
-                    mEqualizer = new Equalizer(0, 0);
-                }
-                if (mEqualizer != null) {
-                    if (mMasterEnabled && !mEqualizer.getEnabled()) {
-                        mEqualizer.setEnabled(true);
-                    }
-                    short numBands = mEqualizer.getNumberOfBands();
-                    if (numBands > 0) {
-                        short topBand = (short) (numBands - 1);
-                        short subTop = (short) Math.max(0, numBands - 2);
-                        short boost = (short) (progress * 100);
-                        short[] range = mEqualizer.getBandLevelRange();
-                        if (boost > range[1]) boost = range[1];
-                        mEqualizer.setBandLevel(topBand, boost);
-                        mEqualizer.setBandLevel(subTop, (short) (boost / 2));
-                    }
-                }
-            } catch (Throwable t) {
-                Log.w(TAG, "updateClarity error: " + t.getMessage());
-            }
-        });
         AudioEffectsManager.getInstance().setClarity(progress * 100);
     }
 
-    // 2. REFUERZO DE GRAVES (0 a 10) -> Multiplicar por 100 para rango 0-1000
+    // 2. REFUERZO DE GRAVES (0 a 10)
     @JavascriptInterface
     public void updateBassBoost(int progress) {
-        mMainHandler.post(() -> {
-            try {
-                if (mBassBoost == null && progress > 0) {
-                    mBassBoost = new BassBoost(0, 0);
-                }
-                if (mBassBoost != null) {
-                    if (mMasterEnabled && !mBassBoost.getEnabled()) {
-                        mBassBoost.setEnabled(true);
-                    }
-                    if (mBassBoost.getStrengthSupported()) {
-                        short strength = (short) (progress * 100);
-                        mBassBoost.setStrength(strength);
-                    }
-                    if (progress == 0) {
-                        mBassBoost.setEnabled(false);
-                    }
-                }
-            } catch (Throwable t) {
-                Log.w(TAG, "updateBassBoost error: " + t.getMessage());
-            }
-        });
         AudioEffectsManager.getInstance().setBassBoostStrength((short) (progress * 100));
     }
 
-    // 3. SONIDO ENVOLVENTE 3D (0 a 10) -> Multiplicar por 100 para rango 0-1000
+    // 3. SONIDO ENVOLVENTE 3D (0 a 10)
     @JavascriptInterface
     public void updateSurround(int progress) {
-        mMainHandler.post(() -> {
-            if (mVirtualizer == null && progress > 0) {
-                try {
-                    mVirtualizer = new Virtualizer(2, 0);
-                } catch (Throwable t) {
-                    mVirtualizer = null;
-                }
-            }
-            if (mVirtualizer != null && mVirtualizer.getStrengthSupported()) {
-                try {
-                    if (progress == 0) {
-                        mVirtualizer.setStrength((short) 0);
-                        mVirtualizer.setEnabled(false);
-                    } else {
-                        if (mMasterEnabled && !mVirtualizer.getEnabled()) {
-                            mVirtualizer.setEnabled(true);
-                        }
-                        short strength = (short) (progress * 100);
-                        mVirtualizer.setStrength(strength);
-                    }
-                } catch (Throwable t) {
-                    Log.w(TAG, "updateSurround error: " + t.getMessage());
-                }
-            }
-        });
         AudioEffectsManager.getInstance().setSurround(progress * 100);
     }
 
-    // 4. ATMÓSFERA DE SALA / REVERB: Selector de 5 Salas + Nivelador de Ganancia (0-10)
+    // 4. ATMOSFERA DE SALA (sala 1-5) + MIX del reverb (0 a 10)
     @JavascriptInterface
     public void updateAtmosphere(int roomType, int reverbMix) {
-        mMainHandler.post(() -> {
-            try {
-                if (mEqualizer == null) {
-                    mEqualizer = new Equalizer(0, 0);
-                }
-                if (mEqualizer != null) {
-                    if (mMasterEnabled && !mEqualizer.getEnabled()) {
-                        mEqualizer.setEnabled(true);
-                    }
-                    short numBands = mEqualizer.getNumberOfBands();
-                    if (numBands >= 5) {
-                        short band1k = (short) Math.min(numBands - 1, 3);
-                        short band2k = (short) Math.min(numBands - 1, 4);
-                        short band16k = (short) Math.min(numBands - 1, 8);
-                        short band500 = (short) Math.min(numBands - 1, 2);
-
-                        if (reverbMix == 0) {
-                            mEqualizer.setBandLevel(band1k, (short) 0);
-                            mEqualizer.setBandLevel(band2k, (short) 0);
-                            mEqualizer.setBandLevel(band16k, (short) 0);
-                            mEqualizer.setBandLevel(band500, (short) 0);
-                        } else {
-                            float multiplier = reverbMix / 10.0f;
-                            short boost1k = 0, boost2k = 0, cut16k = 0, cut500 = 0;
-
-                            switch (roomType) {
-                                case 1: boost1k = 300; break;
-                                case 2: boost1k = 500; boost2k = 200; break;
-                                case 3: boost1k = 700; boost2k = 400; cut16k = -200; break;
-                                case 4: boost1k = 1000; boost2k = 600; cut500 = -200; break;
-                                case 5: boost1k = 1500; boost2k = 1000; cut500 = -400; break;
-                            }
-                            
-                            short[] range = mEqualizer.getBandLevelRange();
-                            mEqualizer.setBandLevel(band1k, (short) Math.min(boost1k * multiplier, range[1]));
-                            mEqualizer.setBandLevel(band2k, (short) Math.min(boost2k * multiplier, range[1]));
-                            mEqualizer.setBandLevel(band16k, (short) Math.max(cut16k * multiplier, range[0]));
-                            mEqualizer.setBandLevel(band500, (short) Math.max(cut500 * multiplier, range[0]));
-                        }
-                    }
-                }
-            } catch (Throwable t) {
-                Log.w(TAG, "updateAtmosphere software reverb error: " + t.getMessage());
-            }
-        });
-        // Sincronizar también con AudioEffectsManager de forma segura
-        AudioEffectsManager.getInstance().setAmbiente(reverbMix * 100);
+        mLastRoomType = roomType;
+        mLastReverbMix = reverbMix;
+        AudioEffectsManager.getInstance().setAmbiente(reverbMix * 100, roomType);
     }
 
-    // 5. VOLUMEN MAESTRO (0 a 10) -> LoudnessEnhancer con rango seguro de ganancia 0 a 1000 milibelios (mB)
+    // La app llama a updateAtmosphere con 1 solo argumento al encender (App.tsx); sin esta
+    // version el WebView lanzaba error y se saltaba el volumen y la normalizacion.
+    @JavascriptInterface
+    public void updateAtmosphere(int roomType) {
+        updateAtmosphere(roomType, mLastReverbMix);
+    }
+
+    // 5. VOLUMEN MAESTRO (0 a 10) -> ganancia general
     @JavascriptInterface
     public void updateMasterVolume(int progress) {
-        mMainHandler.post(() -> {
-            try {
-                if (mLoudness == null && progress > 0) {
-                    mLoudness = new LoudnessEnhancer(0);
-                }
-                if (mLoudness != null) {
-                    if (mMasterEnabled && !mLoudness.getEnabled()) {
-                        mLoudness.setEnabled(true);
-                    }
-                    int gainMb = progress * 100; // 0 to 1000 mB
-                    mLoudness.setTargetGain(gainMb);
-                    if (progress == 0) {
-                        mLoudness.setEnabled(false);
-                    }
-                }
-            } catch (Throwable t) {
-                Log.w(TAG, "updateMasterVolume error: " + t.getMessage());
-            }
-        });
         AudioEffectsManager.getInstance().setDynamicBoost(progress * 100);
     }
 
-    // 6. NORMALIZACIÓN (0 a 10) -> Nivelador dinámico regulando techo de ganancia (limiter)
+    // 6. NORMALIZACION DINAMICA (0 a 10) -> sube la ganancia de TODO (efectos incluidos)
     @JavascriptInterface
     public void updateNormalization(int progress) {
-        mMainHandler.post(() -> {
-            try {
-                if (mEqualizer != null) {
-                    short numBands = mEqualizer.getNumberOfBands();
-                    short ceiling = (short) (- (progress * 50));
-                    for (short b = 0; b < numBands; b++) {
-                        short current = mEqualizer.getBandLevel(b);
-                        if (current > 0) {
-                            mEqualizer.setBandLevel(b, (short) Math.max(0, current + ceiling / 10));
-                        }
-                    }
-                }
-            } catch (Throwable t) {
-                Log.w(TAG, "updateNormalization error: " + t.getMessage());
-            }
-        });
+        AudioEffectsManager.getInstance().setNormalization(progress * 100);
+    }
+
+    // 7. NIVEL EN dB DE CADA SALA DEL REVERB (sala 1-5, -12 a +12 dB)
+    @JavascriptInterface
+    public void updateRoomLevel(int room, int db) {
+        AudioEffectsManager.getInstance().setRoomLevelDb(room, db);
     }
 
     @JavascriptInterface
     public void updateBandLevel(int bandIndex, int levelMillibels) {
-        mMainHandler.post(() -> {
-            try {
-                if (mEqualizer == null) {
-                    mEqualizer = new Equalizer(0, 0);
-                    mEqualizer.setEnabled(mMasterEnabled);
-                }
-                if (mEqualizer != null) {
-                    short numBands = mEqualizer.getNumberOfBands();
-                    if (bandIndex < numBands) {
-                        short[] range = mEqualizer.getBandLevelRange();
-                        short clamped = (short) Math.max(range[0], Math.min(range[1], levelMillibels));
-                        mEqualizer.setBandLevel((short) bandIndex, clamped);
-                    }
-                }
-            } catch (Throwable t) {
-                Log.w(TAG, "updateBandLevel error: " + t.getMessage());
-            }
-        });
         AudioEffectsManager.getInstance().setBandLevel((short) bandIndex, (short) levelMillibels);
     }
 
@@ -406,11 +202,11 @@ public class WebAppInterface {
             obj.put("bridgeConnected", true);
             obj.put("isRootActive", mIsRootDetected);
             obj.put("masterEnabled", mMasterEnabled);
-            obj.put("reverbActive", mReverb != null && mMasterEnabled);
-            obj.put("bassBoostActive", mBassBoost != null && mMasterEnabled);
-            obj.put("virtualizerActive", mVirtualizer != null && mMasterEnabled);
-            obj.put("loudnessActive", mLoudness != null && mMasterEnabled);
-            obj.put("equalizerActive", mEqualizer != null && mMasterEnabled);
+            obj.put("reverbActive", mMasterEnabled);
+            obj.put("bassBoostActive", mMasterEnabled);
+            obj.put("virtualizerActive", mMasterEnabled);
+            obj.put("loudnessActive", mMasterEnabled);
+            obj.put("equalizerActive", mMasterEnabled);
             obj.put("globalSessionId", 0);
             return obj.toString();
         } catch (Exception e) {

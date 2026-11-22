@@ -69,10 +69,21 @@ public class AudioEffectsManager {
     // devuelve: 0 = nada, 1 = todo. Los efectos no deben subir el volumen por si solos;
     // solo el Volumen Maestro y la Normalizacion amplifican.
     private static final double HEADROOM_COMP = 0.7;
+    // VOLUMEN MAESTRO = amplificador (como las apps "Volume Booster"): suma ganancia real aunque el volumen
+    // del sistema este al 100%. NORMALIZACION suma un poco mas de nivel. Valores al maximo del slider (mB).
+    private static final int MASTER_MAX_MB = 1200;
+    private static final int NORMALIZATION_MAX_MB = 400;
+    // Peso de cada banda de pantalla (63 Hz ... 16 kHz) en la energia tipica de la musica; sirve para
+    // calcular cuanto volumen agregan Claridad y Graves y restarlo (los efectos no deben subir el volumen).
+    private static final double[] BAND_ENERGY_W = {0.10, 0.16, 0.18, 0.16, 0.14, 0.11, 0.07, 0.05, 0.03};
+    // Nivel extra de cada sala del reverb en mB (100 = 1 dB). Editable tambien desde la app.
+    private final int[] roomLevelMb = {0, -300, 200, 100, 400};
     private static final int HEADROOM_OFFSET_LOW_MB = 300;
     private static final int HEADROOM_OFFSET_HIGH_MB = 400;
-    // Lo que se resta al subir el envolvente al maximo (mB), porque sube el volumen.
-    private static final int COMP_SURROUND_MB = 300;
+    // Volumen que SUMA el virtualizador al subirlo al maximo (mB, 100 = 1 dB). 250 = +2,5 dB.
+    private static final int SURROUND_GAIN_MB = 250;
+    // true = fuerza binaural/transaural segun la salida; false = modo automatico de Android (como las apps de EQ normales)
+    private static final boolean FORCE_VIRTUALIZER_MODE = false;
     private static final double BASS_LAYER_63 = 0.3;
     private static final double BASS_LAYER_125 = 1.0;
     private static final double BASS_LAYER_250 = 0.5;
@@ -250,6 +261,7 @@ public class AudioEffectsManager {
             if (virt.getStrengthSupported()) {
                 virt.setStrength(virtStrength());
             }
+            tuneVirtualizer(virt);
             virt.setEnabled(virtualizerOn(virt));
             virtualizers.put(sessionId, virt);
             hasVirtualizerHardware = true;
@@ -327,8 +339,8 @@ public class AudioEffectsManager {
 
     /** Ganancia total del LoudnessEnhancer (mB): volumen maestro + normalizacion + compensacion. */
     private int computeLoudnessGain() {
-        int master = (int) (dynamicBoostStrength * 0.5);   // 0 .. +500
-        int norm = (int) (normalizationStrength * 0.6);    // 0 .. +600
+        int master = (int) (dynamicBoostStrength / 1000.0 * MASTER_MAX_MB);       // amplificador
+        int norm = (int) (normalizationStrength / 1000.0 * NORMALIZATION_MAX_MB);  // nivel extra
 
         // Mayor subida en graves/medios (63 Hz - 4 kHz) y en agudos (8 y 16 kHz)
         int maxLow = 0, maxHigh = 0;
@@ -338,11 +350,12 @@ public class AudioEffectsManager {
         }
         int lost = Math.max(0, Math.max(maxLow - HEADROOM_OFFSET_LOW_MB, maxHigh - HEADROOM_OFFSET_HIGH_MB));
         lost = Math.min(lost, 1500);
-        int eqPart = (int) (lost * HEADROOM_COMP) - (int) (surroundStrength * COMP_SURROUND_MB / 1000.0);
-        eqPart = Math.max(-500, Math.min(1100, eqPart));   // no se come el rango del Volumen Maestro
+        // + lo que baja el Bundle, - lo que suben Claridad/Graves, + el poco de volumen del virtualizador
+        int eqPart = (int) (lost * HEADROOM_COMP) - effectsEnergyMb() + (int) (surroundStrength * SURROUND_GAIN_MB / 1000.0);
+        eqPart = Math.max(-600, Math.min(1100, eqPart));   // no se come el rango del Volumen Maestro
 
         int total = gainMillibels + master + norm + eqPart;
-        return Math.max(-500, Math.min(2000, total));
+        return Math.max(-600, Math.min(2200, total));
     }
 
     private void applyLoudness() {
@@ -456,10 +469,9 @@ public class AudioEffectsManager {
         savePreferences();
     }
 
-    /** Curva suave: slider 1 -> ~18%, 3 -> ~40%, 5 -> ~60%, 10 -> 100% (maximo de Android = 1000). */
+    /** Lineal, como un virtualizador normal: slider 0..10 -> fuerza 0..1000 (maximo de Android). */
     private short virtStrength() {
-        double ratio = Math.max(0, Math.min(1000, surroundStrength)) / 1000.0;
-        return (short) Math.round(1000 * Math.pow(ratio, 0.75));
+        return (short) Math.max(0, Math.min(1000, surroundStrength));
     }
 
     /**
@@ -467,6 +479,37 @@ public class AudioEffectsManager {
      * Antes se apagaba en 0, y encenderlo/apagarlo cambiaba el volumen de golpe.
      * Si el equipo no soporta fuerza variable, solo se enciende con el slider arriba de 0.
      */
+    /** true si hay auriculares (cable, USB o Bluetooth) como salida. */
+    private boolean headphonesConnected() {
+        try {
+            if (appContext == null) return false;
+            AudioManager am = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return false;
+            for (android.media.AudioDeviceInfo d : am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+                int t = d.getType();
+                if (t == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET
+                        || t == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                        || t == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                        || t == android.media.AudioDeviceInfo.TYPE_USB_HEADSET) return true;
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    /** Fuerza el modo del virtualizador segun la salida: binaural (auriculares) o transaural (parlante). */
+    private void tuneVirtualizer(Virtualizer v) {
+        if (!FORCE_VIRTUALIZER_MODE) return;
+        try {
+            int mode = headphonesConnected() ? Virtualizer.VIRTUALIZATION_MODE_BINAURAL
+                                             : Virtualizer.VIRTUALIZATION_MODE_TRANSAURAL;
+            if (v.canVirtualize(android.media.AudioFormat.CHANNEL_OUT_STEREO, mode)) {
+                v.forceVirtualizationMode(mode);
+            } else {
+                v.forceVirtualizationMode(Virtualizer.VIRTUALIZATION_MODE_AUTO);
+            }
+        } catch (Throwable ignored) {}
+    }
+
     private boolean virtualizerOn(Virtualizer v) {
         boolean strengthOk = false;
         try { strengthOk = v.getStrengthSupported(); } catch (Exception ignored) {}
@@ -478,9 +521,12 @@ public class AudioEffectsManager {
         for (Virtualizer v : virtualizers.values()) {
             try {
                 if (v.getStrengthSupported()) v.setStrength(virtStrength());
+                tuneVirtualizer(v);
                 v.setEnabled(virtualizerOn(v));
             } catch (Exception ignored) {}
         }
+        for (EnvironmentalReverb env : envReverbs.values()) { configureEnvironmentalReverb(env, ambienteStrength); }
+        applyLoudness();
         savePreferences();
     }
 
@@ -493,6 +539,14 @@ public class AudioEffectsManager {
     public synchronized void setNormalization(int strength) {
         this.normalizationStrength = Math.max(0, Math.min(1000, strength));
         applyLoudness();
+        savePreferences();
+    }
+
+    /** Nivel extra de una sala (1..5) en dB, -12..+12. */
+    public synchronized void setRoomLevelDb(int room, int db) {
+        if (room < 1 || room > 5) return;
+        roomLevelMb[room - 1] = Math.max(-12, Math.min(12, db)) * 100;
+        setAmbiente(ambienteStrength);
     }
 
     public synchronized void setBassBoostStrength(short strength) {
@@ -515,18 +569,38 @@ public class AudioEffectsManager {
         savePreferences();
     }
 
+    /** Subida (mB) que agrega el slider de Claridad en cada banda de pantalla. */
+    private int clarityLayerMb(int index) {
+        double boost = (clarityStrength / 1000.0) * CLARITY_MAX_MB;
+        if (index == 7) return (int) Math.round(boost);
+        if (index == 8) return (int) Math.round(boost * 1.2);
+        return 0;
+    }
+
+    /** Subida (mB) que agrega el slider de Graves en cada banda de pantalla. */
+    private int bassLayerMb(int index) {
+        if (dialsUsed) return 0;
+        double bass = (bassBoostStrength / 1000.0) * BASS_LAYER_MAX_MB;
+        if (index == 0) return (int) Math.round(bass * BASS_LAYER_63);
+        if (index == 1) return (int) Math.round(bass * BASS_LAYER_125);
+        if (index == 2) return (int) Math.round(bass * BASS_LAYER_250);
+        return 0;
+    }
+
+    /** Cuanto sube el volumen (mB) lo que agregan Claridad y Graves, ponderado por la energia de cada banda. */
+    private int effectsEnergyMb() {
+        double sum = 0;
+        for (int i = 0; i < BAND_ENERGY_W.length; i++) {
+            double g = (clarityLayerMb(i) + bassLayerMb(i)) / 100.0;   // dB
+            sum += BAND_ENERGY_W[i] * Math.pow(10.0, g / 10.0);
+        }
+        return (int) Math.round(10.0 * Math.log10(Math.max(sum, 1e-6)) * 100.0);
+    }
+
     private short getUiVal(int index) {
         Short val = uiBandLevels.get((short) index);
         int v = (val != null) ? val : 0;
-        double boost = (clarityStrength / 1000.0) * CLARITY_MAX_MB; // Claridad: suma sobre 8k y 16k
-        if (index == 7) v += (int) Math.round(boost);
-        if (index == 8) v += (int) Math.round(boost * 1.2);
-        if (!dialsUsed) {
-            double bass = (bassBoostStrength / 1000.0) * BASS_LAYER_MAX_MB;
-            if (index == 0) v += (int) Math.round(bass * BASS_LAYER_63);
-            if (index == 1) v += (int) Math.round(bass * BASS_LAYER_125);
-            if (index == 2) v += (int) Math.round(bass * BASS_LAYER_250);
-        }
+        v += clarityLayerMb(index) + bassLayerMb(index);
         return (short) Math.max(-3000, Math.min(3000, v));
     }
 
@@ -588,6 +662,9 @@ public class AudioEffectsManager {
             case 5:  p = new int[]{5000, 70, 70, 1000, 1000, 500}; break; // Catedral
             default: p = new int[]{1500,  5, 10,  700,  800, 750}; break; // Estudio
         }
+        int roomOff = roomLevelMb[Math.max(1, Math.min(5, roomType)) - 1];
+        wet = (short) Math.max(-9000, Math.min(2000, wet + roomOff));
+        refl = (short) Math.max(-9000, Math.min(1000, refl + roomOff + (int) (surroundStrength * 0.2)));
         try {
             env.setRoomLevel((short) 0);
             env.setRoomHFLevel((short) 0);
@@ -597,7 +674,7 @@ public class AudioEffectsManager {
             env.setDecayHFRatio((short) p[5]);
         } catch (Exception ignored) {}
         try {
-            env.setReflectionsDelay(p[1]);
+            env.setReflectionsDelay(Math.min(300, p[1] + (int) (surroundStrength / 1000.0 * 20)));
             env.setReverbDelay(p[2]);
             env.setDensity((short) p[3]);
             env.setDiffusion((short) p[4]);
@@ -731,6 +808,9 @@ public class AudioEffectsManager {
             ed.putInt("surround", surroundStrength);
             ed.putInt("dynamicBoost", dynamicBoostStrength);
             ed.putInt("bassBoost", bassBoostStrength);
+            ed.putInt("normalization", normalizationStrength);
+            ed.putInt("roomType", roomType);
+            ed.putString("roomLevels", roomLevelMb[0] + "," + roomLevelMb[1] + "," + roomLevelMb[2] + "," + roomLevelMb[3] + "," + roomLevelMb[4]);
             for (Map.Entry<Short, Short> entry : uiBandLevels.entrySet()) {
                 ed.putInt("ui_band_" + entry.getKey(), entry.getValue());
             }
@@ -749,6 +829,15 @@ public class AudioEffectsManager {
             surroundStrength = sp.getInt("surround", 0);
             dynamicBoostStrength = sp.getInt("dynamicBoost", 0);
             bassBoostStrength = (short) sp.getInt("bassBoost", 0);
+            normalizationStrength = sp.getInt("normalization", 0);
+            roomType = Math.max(1, Math.min(5, sp.getInt("roomType", 1)));
+            String rl = sp.getString("roomLevels", null);
+            if (rl != null) {
+                String[] parts = rl.split(",");
+                for (int i = 0; i < parts.length && i < 5; i++) {
+                    try { roomLevelMb[i] = Integer.parseInt(parts[i].trim()); } catch (Exception ignored) {}
+                }
+            }
 
             for (short b = 0; b < UI_FREQUENCIES_HZ.length; b++) {
                 if (sp.contains("ui_band_" + b)) {
