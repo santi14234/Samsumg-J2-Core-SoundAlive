@@ -49,25 +49,75 @@ const EQ_PRESETS = [
   { name: 'Agudos', levels: [0, 0, 0, 1, 2, 4, 5, 6, 7] },
 ];
 
+// ---------------------------------------------------------------------------------------------
+// Configuracion completa (efectos + 9 bandas + nivel de cada sala). Se guarda en el telefono
+// (localStorage) en dos lugares: la configuracion "en vivo" (lo ultimo que dejaste) y las 7 ranuras.
+// ---------------------------------------------------------------------------------------------
+type Cfg = {
+  clarity: number; bassBoost: number; surround: number; atmosphere: number; mix: number;
+  volume: number; normalization: number; bandLevels: number[]; roomDb: number[];
+};
+const DEFAULT_ROOM_DB = [0, -3, 2, 1, 4];   // dB extra de cada sala (Estudio ... Catedral)
+const LS_LIVE = 'soundalive.live.v2';
+const LS_ACTIVE = 'soundalive.activeSlot.v2';
+const LS_SLOT = (n: number) => `soundalive.slot.v2.${n}`;
+
+const clampNum = (x: any, lo: number, hi: number, d: number) =>
+  (typeof x === 'number' && isFinite(x)) ? Math.max(lo, Math.min(hi, Math.round(x))) : d;
+
+function readCfg(key: string): Cfg | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (!o || typeof o !== 'object') return null;
+    return {
+      clarity: clampNum(o.clarity, 0, 10, 5),
+      bassBoost: clampNum(o.bassBoost, 0, 10, 4),
+      surround: clampNum(o.surround, 0, 10, 3),
+      atmosphere: clampNum(o.atmosphere, 1, 5, 3),
+      mix: clampNum(o.mix, 0, 20, 10),
+      volume: clampNum(o.volume, 0, 10, 2),
+      normalization: clampNum(o.normalization, 0, 10, 3),
+      bandLevels: Array.from({ length: 9 }, (_, i) => clampNum(Array.isArray(o.bandLevels) ? o.bandLevels[i] : 0, -10, 10, 0)),
+      roomDb: Array.from({ length: 5 }, (_, i) => clampNum(Array.isArray(o.roomDb) ? o.roomDb[i] : DEFAULT_ROOM_DB[i], -12, 12, DEFAULT_ROOM_DB[i])),
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+function writeCfg(key: string, cfg: Cfg) {
+  try { localStorage.setItem(key, JSON.stringify(cfg)); } catch (e) { /* sin espacio o bloqueado */ }
+}
+
 export default function App() {
   const [enabled, setEnabled] = useState(true);
 
   // Core FxSound effects values (0 - 10 scale)
-  const [clarity, setClarity] = useState<number>(5);
-  const [bassBoost, setBassBoost] = useState<number>(4);
-  const [surround, setSurround] = useState<number>(3);
-  const [atmosphere, setAtmosphere] = useState<number>(3);
-  const [volume, setVolume] = useState<number>(2);
-  const [mix, setMix] = useState<number>(10); // Mix del reverb (0-20), separado del volumen maestro
-  const [normalization, setNormalization] = useState<number>(3);
+  // Lo ultimo que dejaste (se recupera aunque cierres la app o el reproductor la abra de nuevo)
+  const [initCfg] = useState<Cfg | null>(() => readCfg(LS_LIVE));
+  const [clarity, setClarity] = useState<number>(initCfg?.clarity ?? 5);
+  const [bassBoost, setBassBoost] = useState<number>(initCfg?.bassBoost ?? 4);
+  const [surround, setSurround] = useState<number>(initCfg?.surround ?? 3);
+  const [atmosphere, setAtmosphere] = useState<number>(initCfg?.atmosphere ?? 3);
+  const [volume, setVolume] = useState<number>(initCfg?.volume ?? 2);
+  const [mix, setMix] = useState<number>(initCfg?.mix ?? 10); // Mix del reverb (0-20), separado del volumen maestro
+  const [normalization, setNormalization] = useState<number>(initCfg?.normalization ?? 3);
+  const [roomDb, setRoomDb] = useState<number[]>(initCfg?.roomDb ?? DEFAULT_ROOM_DB);
 
   // 7 Slots Profile Management
-  const [activeSlot, setActiveSlot] = useState<number>(1);
+  const [activeSlot, setActiveSlot] = useState<number>(() => {
+    try { return clampNum(parseInt(localStorage.getItem(LS_ACTIVE) || '1'), 1, 7, 1); } catch (e) { return 1; }
+  });
+  const [savedSlots, setSavedSlots] = useState<boolean[]>(() =>
+    [1, 2, 3, 4, 5, 6, 7].map((n) => { try { return !!localStorage.getItem(LS_SLOT(n)); } catch (e) { return false; } }));
+  const [flash, setFlash] = useState<string>('');
   const [showSlotsMenu, setShowSlotsMenu] = useState<boolean>(false);
   const [showThreeDotMenu, setShowThreeDotMenu] = useState<boolean>(false);
 
   // 9-Band Equalizer levels in dB (-10 to +10 dB)
-  const [bandLevels, setBandLevels] = useState<number[]>([0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const [bandLevels, setBandLevels] = useState<number[]>(initCfg?.bandLevels ?? [0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
   // Native diagnostic state
   const [status, setStatus] = useState<NativeEffectsStatus>({
@@ -105,38 +155,6 @@ export default function App() {
     bridgeConnected: true,
   });
 
-  // Load slot profile on mount or slot change
-  useEffect(() => {
-    if (typeof window !== 'undefined' && (window as any).AndroidAudio) {
-      try {
-        const jsonStr = (window as any).AndroidAudio.loadProfile(activeSlot);
-        const data = JSON.parse(jsonStr);
-        setClarity(data.clarity ?? 500);
-        setBassBoost(data.bass ?? 400);
-        setSurround(data.surround ?? 300);
-        setAtmosphere(data.roomType ?? 1); // roomType
-        setMix(data.mixLevel ?? 10); // mixLevel
-        setVolume(data.volume ?? 2);
-        setNormalization(data.normalization ?? 3);
-      } catch (e) {
-        console.warn('Load profile error:', e);
-      }
-    }
-  }, [activeSlot]);
-
-  // Save current profile to active slot
-  const handleSaveSlot = (slot: number) => {
-    setActiveSlot(slot);
-    if (typeof window !== 'undefined' && (window as any).AndroidAudio) {
-      try {
-        (window as any).AndroidAudio.saveProfile(slot, clarity, bassBoost, surround, atmosphere, mix, volume, normalization);
-      } catch (e) {
-        console.warn('Save profile error:', e);
-      }
-    }
-    setShowSlotsMenu(false);
-  };
-
   // Restart audio server via Root
   const handleRestartAudioServer = () => {
     if (typeof window !== 'undefined' && (window as any).AndroidAudio) {
@@ -150,40 +168,96 @@ export default function App() {
     setShowThreeDotMenu(false);
   };
 
+  const currentCfg = (): Cfg => ({ clarity, bassBoost, surround, atmosphere, mix, volume, normalization, bandLevels, roomDb });
+
+  // Envia toda la configuracion al motor nativo (efectos, nivel de cada sala y las 9 bandas)
+  const pushAll = (c: Cfg) => {
+    if (typeof window === 'undefined' || !(window as any).AndroidAudio) return;
+    const bridge = (window as any).AndroidAudio;
+    try {
+      bridge.updateClarity(c.clarity);
+      bridge.updateBassBoost(c.bassBoost);
+      bridge.updateSurround(c.surround);
+      if (typeof bridge.updateRoomLevel === 'function') {
+        c.roomDb.forEach((db, i) => bridge.updateRoomLevel(i + 1, db));
+      }
+      bridge.updateAtmosphere(c.atmosphere, c.mix);
+      bridge.updateMasterVolume(c.volume);
+      bridge.updateNormalization(c.normalization);
+      c.bandLevels.forEach((db, i) => syncNativeBandLevel(i, db));
+    } catch (e) {
+      console.warn('pushAll error:', e);
+    }
+  };
+
+  const showFlash = (msg: string) => {
+    setFlash(msg);
+    setTimeout(() => setFlash(''), 2200);
+  };
+
+  // Aplica una configuracion completa (la pantalla y el motor)
+  const applyCfg = (c: Cfg) => {
+    setClarity(c.clarity); setBassBoost(c.bassBoost); setSurround(c.surround);
+    setAtmosphere(c.atmosphere); setMix(c.mix); setVolume(c.volume);
+    setNormalization(c.normalization); setBandLevels(c.bandLevels); setRoomDb(c.roomDb);
+    if (enabled) pushAll(c);
+  };
+
+  // Tocar una ranura: si tiene datos los carga; si esta vacia NO toca tu configuracion actual
+  const handleSelectSlot = (slot: number) => {
+    setActiveSlot(slot);
+    try { localStorage.setItem(LS_ACTIVE, String(slot)); } catch (e) { /* nada */ }
+    const saved = readCfg(LS_SLOT(slot));
+    if (saved) {
+      applyCfg(saved);
+      showFlash(`Ranura #${slot} cargada`);
+    } else {
+      showFlash(`Ranura #${slot} vacia: pulsa Guardar para dejar aqui tu configuracion`);
+    }
+  };
+
+  // Guardar TODA la configuracion actual en una ranura
+  const handleSaveSlot = (slot: number) => {
+    setActiveSlot(slot);
+    try { localStorage.setItem(LS_ACTIVE, String(slot)); } catch (e) { /* nada */ }
+    writeCfg(LS_SLOT(slot), currentCfg());
+    setSavedSlots((prev) => prev.map((v, i) => (i === slot - 1 ? true : v)));
+    setShowSlotsMenu(false);
+    showFlash(`Guardado en la ranura #${slot} (efectos, 9 bandas y salas)`);
+  };
+
+  const handleClearSlot = (slot: number) => {
+    try { localStorage.removeItem(LS_SLOT(slot)); } catch (e) { /* nada */ }
+    setSavedSlots((prev) => prev.map((v, i) => (i === slot - 1 ? false : v)));
+    showFlash(`Ranura #${slot} borrada`);
+  };
+
+  // Guarda lo ultimo que dejaste (para que no se restablezca al volver a abrir la app)
+  useEffect(() => {
+    const t = setTimeout(() => writeCfg(LS_LIVE, { clarity, bassBoost, surround, atmosphere, mix, volume, normalization, bandLevels, roomDb }), 300);
+    return () => clearTimeout(t);
+  }, [clarity, bassBoost, surround, atmosphere, mix, volume, normalization, bandLevels, roomDb]);
+
   // Update native effects immediately when power toggle changes
   const handleTogglePower = useCallback(() => {
     const nextEnabled = !enabled;
     setEnabled(nextEnabled);
     syncNativeMasterEnabled(nextEnabled);
-    if (nextEnabled && typeof window !== 'undefined' && (window as any).AndroidAudio) {
-      const bridge = (window as any).AndroidAudio;
-      bridge.updateClarity(clarity);
-      bridge.updateBassBoost(bassBoost);
-      bridge.updateSurround(surround);
-      bridge.updateAtmosphere(atmosphere, mix);
-      bridge.updateMasterVolume(volume);
-      bridge.updateNormalization(normalization);
-    }
-  }, [enabled, clarity, bassBoost, surround, atmosphere, mix, volume, normalization]);
+    if (nextEnabled) pushAll(currentCfg());
+  }, [enabled, clarity, bassBoost, surround, atmosphere, mix, volume, normalization, bandLevels, roomDb]);
 
   // Al abrir la app, reenviar todos los valores al motor nativo. Antes solo se enviaban al mover
   // un slider o al encender, asi que tras reiniciar el motor podia quedar con graves/envolvente en 0.
-  const latestValues = useRef({ enabled, clarity, bassBoost, surround, atmosphere, mix, volume, normalization, bandLevels });
-  latestValues.current = { enabled, clarity, bassBoost, surround, atmosphere, mix, volume, normalization, bandLevels };
+  const latestValues = useRef({ enabled, clarity, bassBoost, surround, atmosphere, mix, volume, normalization, bandLevels, roomDb });
+  latestValues.current = { enabled, clarity, bassBoost, surround, atmosphere, mix, volume, normalization, bandLevels, roomDb };
   useEffect(() => {
     const timer = setTimeout(() => {
       const v = latestValues.current;
       if (!v.enabled || typeof window === 'undefined' || !(window as any).AndroidAudio) return;
-      const bridge = (window as any).AndroidAudio;
       try {
         syncNativeMasterEnabled(true);
-        bridge.updateClarity(v.clarity);
-        bridge.updateBassBoost(v.bassBoost);
-        bridge.updateSurround(v.surround);
-        bridge.updateAtmosphere(v.atmosphere, v.mix);
-        bridge.updateMasterVolume(v.volume);
-        bridge.updateNormalization(v.normalization);
-        v.bandLevels.forEach((db, i) => syncNativeBandLevel(i, db));
+        pushAll({ clarity: v.clarity, bassBoost: v.bassBoost, surround: v.surround, atmosphere: v.atmosphere,
+                  mix: v.mix, volume: v.volume, normalization: v.normalization, bandLevels: v.bandLevels, roomDb: v.roomDb });
       } catch (e) {
         console.warn('Startup sync error:', e);
       }
@@ -309,7 +383,7 @@ export default function App() {
               return (
                 <button
                   key={slot}
-                  onClick={() => setActiveSlot(slot)}
+                  onClick={() => handleSelectSlot(slot)}
                   onDoubleClick={() => handleSaveSlot(slot)}
                   className={`py-2 rounded-lg text-xs font-bold font-mono transition-all ${
                     isSelected
@@ -318,20 +392,29 @@ export default function App() {
                   }`}
                   title={`Ranura ${slot} (Doble clic para guardar)`}
                 >
-                  #{slot}
+                  #{slot}{savedSlots[slot - 1] ? <span className="ml-0.5 text-[8px] align-top">●</span> : null}
                 </button>
               );
             })}
           </div>
           <div className="flex items-center justify-between pt-1">
-            <span className="text-[10px] text-neutral-500 italic">Doble clic en un número guarda tu configuración actual.</span>
+            <span className="text-[10px] text-neutral-500 italic">● = ranura con datos. Toca una ranura para cargarla; Guardar la actualiza con todo (efectos, bandas y salas).</span>
             <button
               onClick={() => handleSaveSlot(activeSlot)}
               className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-neutral-950 transition-colors shadow-sm"
             >
               Guardar Slot #{activeSlot}
             </button>
+            <button
+              onClick={() => handleClearSlot(activeSlot)}
+              className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors"
+            >
+              Borrar
+            </button>
           </div>
+          {flash ? (
+            <div className="text-[11px] text-emerald-300 bg-emerald-950/70 border border-emerald-800/50 rounded-lg px-2.5 py-1.5">{flash}</div>
+          ) : null}
         </section>
 
         {/* 9-Band Graphic Equalizer Section */}
@@ -528,6 +611,28 @@ export default function App() {
                 <option value="4">Sala 4: Auditorio</option>
                 <option value="5">Sala 5: Catedral</option>
               </select>
+
+              <div className="flex items-center justify-between text-xs pt-2">
+                <span className="text-neutral-300 font-medium text-[10px]">Nivel de esta sala (dB)</span>
+                <span className="text-indigo-300 font-bold font-mono text-sm">{roomDb[atmosphere - 1] > 0 ? '+' : ''}{roomDb[atmosphere - 1]} dB</span>
+              </div>
+              <input
+                type="range"
+                min="-12"
+                max="12"
+                step="1"
+                value={roomDb[atmosphere - 1]}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  const next = roomDb.map((d, i) => (i === atmosphere - 1 ? val : d));
+                  setRoomDb(next);
+                  if (enabled && typeof window !== 'undefined' && (window as any).AndroidAudio
+                      && typeof (window as any).AndroidAudio.updateRoomLevel === 'function') {
+                    (window as any).AndroidAudio.updateRoomLevel(atmosphere, val);
+                  }
+                }}
+                className="w-full accent-indigo-400 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
 
               <div className="flex items-center justify-between text-xs pt-2">
                 <span className="text-neutral-300 font-medium text-[10px]">Nivel de Ganancia (Mix)</span>
