@@ -41,13 +41,6 @@ public class AudioEffectsManager {
     private final Map<Integer, EnvironmentalReverb> envReverbs = new HashMap<>();
     private final Map<Integer, Virtualizer> virtualizers = new HashMap<>();
 
-    // Libreria nativa SoundAlive FX (modulo de Magisk). Si esta instalada reemplaza a los efectos de
-    // Android en cada sesion; si no, todo funciona como antes. Pon false para usar SIEMPRE los de Android.
-    private static final boolean USE_NATIVE_FX = true;
-    // Ajuste fino del nivel del ambiente nativo (mB). Si suena muy fuerte: -300, -600...
-    private static final int NATIVE_WET_OFFSET_MB = 0;
-    private final Map<Integer, NativeFx> nativeFx = new HashMap<>();
-
     private boolean masterEnabled = true;
     private short bassBoostStrength = 0; // 0 - 1000
     private int gainMillibels = 0; // -500 to +1200 mB
@@ -58,13 +51,28 @@ public class AudioEffectsManager {
     private int normalizationStrength = 0; // 0 - 1000 (Normalizacion dinamica -> ganancia extra)
     private int roomType = 1; // 1 Estudio, 2 Habitacion, 3 Estadio, 4 Auditorio, 5 Catedral
     // El PresetReverb tiene nivel fijo y hace que el slider Mix no controle nada. Ponlo en true si lo quieres.
-    private static final boolean USE_PRESET_REVERB = false;
+    private static final boolean USE_PRESET_REVERB = true;
+    // Desde este valor del slider Mix (1100 = 11) se suma un segundo reverb (PresetReverb) para que
+    // suene mas fuerte. Pon 2100 para quitarlo.
+    private static final int PRESET_REVERB_FROM = 1100;
     // Reverb (milibelios, 100 mB = 1 dB). El slider Mix va de 0 a 20:
     //   0..10  -> de -30 dB hasta REVERB_AT_10_MB   (el +3 dB que te gustaba)
     //   10..20 -> de REVERB_AT_10_MB hasta REVERB_MAX_MB (+20 dB es el maximo que permite Android)
     // Si satura, baja REVERB_MAX_MB.
     // Capa de graves: el slider "Refuerzo de Graves" tambien sube estas bandas (parlantes chicos
     // casi no reproducen 63 Hz, el cuerpo del bajo esta en 125-250 Hz). Multiplicadores sobre +8 dB.
+    // Fuerza maxima (slider en 10) de Claridad y Graves, en mB. Bajalos si aun suenan muy fuertes.
+    private static final int CLARITY_MAX_MB = 500;
+    private static final int BASS_LAYER_MAX_MB = 500;
+    // Compensacion de volumen. El Bundle de Android baja el volumen cuando subes bandas (no baja nada
+    // hasta +3 dB en graves/medios ni +4 dB en agudos). HEADROOM_COMP es cuanto de esa bajada se
+    // devuelve: 0 = nada, 1 = todo. Los efectos no deben subir el volumen por si solos;
+    // solo el Volumen Maestro y la Normalizacion amplifican.
+    private static final double HEADROOM_COMP = 0.7;
+    private static final int HEADROOM_OFFSET_LOW_MB = 300;
+    private static final int HEADROOM_OFFSET_HIGH_MB = 400;
+    // Lo que se resta al subir el envolvente al maximo (mB), porque sube el volumen.
+    private static final int COMP_SURROUND_MB = 300;
     private static final double BASS_LAYER_63 = 0.3;
     private static final double BASS_LAYER_125 = 1.0;
     private static final double BASS_LAYER_250 = 0.5;
@@ -138,26 +146,6 @@ public class AudioEffectsManager {
     }
 
     public synchronized void attachSession(int sessionId) {
-        if (USE_NATIVE_FX && sessionId != 0) {
-            NativeFx existing = nativeFx.get(sessionId);
-            if (existing != null) {
-                existing.setEnabled(masterEnabled);
-                pushNativeParams(existing);
-                return;
-            }
-            if (!equalizers.containsKey(sessionId) && NativeFx.isAvailable()) {
-                NativeFx n = NativeFx.create(sessionId);
-                if (n != null) {
-                    nativeFx.put(sessionId, n);
-                    activeSessions.add(sessionId);
-                    pushNativeParams(n);
-                    n.setEnabled(masterEnabled);
-                    Log.d(TAG, "SoundAlive FX nativo en la sesion " + sessionId);
-                    return;
-                }
-                // si falla, se usan los efectos de Android como antes
-            }
-        }
         if (activeSessions.contains(sessionId) && equalizers.containsKey(sessionId)) {
             Equalizer eq = equalizers.get(sessionId);
             if (eq != null) {
@@ -244,9 +232,7 @@ public class AudioEffectsManager {
         // 5. PresetReverb (Using PRESET_LARGEHALL for real Samsung SoundAlive Concert Hall feeling)
         try {
             PresetReverb rev = new PresetReverb(EFFECT_PRIORITY, sessionId);
-            boolean presetOn = USE_PRESET_REVERB && ambienteStrength > 0;
-            rev.setPreset((short) (presetOn ? PresetReverb.PRESET_LARGEHALL : PresetReverb.PRESET_NONE));
-            rev.setEnabled(masterEnabled && presetOn);
+            applyPresetReverb(rev);
             presetReverbs.put(sessionId, rev);
             hasReverbHardware = true;
             Log.d(TAG, "PresetReverb (LARGEHALL) OK on session " + sessionId + ", active=" + (masterEnabled && ambienteStrength > 0));
@@ -264,7 +250,7 @@ public class AudioEffectsManager {
             if (virt.getStrengthSupported()) {
                 virt.setStrength(virtStrength());
             }
-            virt.setEnabled(masterEnabled && surroundStrength > 0);
+            virt.setEnabled(virtualizerOn(virt));
             virtualizers.put(sessionId, virt);
             hasVirtualizerHardware = true;
             Log.d(TAG, "Virtualizer OK on session " + sessionId);
@@ -283,15 +269,12 @@ public class AudioEffectsManager {
 
     /** true si ya hay efectos puestos en esa sesion (por ejemplo porque el reproductor la aviso). */
     public synchronized boolean isSessionAttached(int sessionId) {
-        return sessionId != 0 && (activeSessions.contains(sessionId) || equalizers.containsKey(sessionId) || nativeFx.containsKey(sessionId));
+        return sessionId != 0 && (activeSessions.contains(sessionId) || equalizers.containsKey(sessionId));
     }
 
     public synchronized void detachSession(int sessionId) {
         if (sessionId == 0) return;
         activeSessions.remove(sessionId);
-
-        NativeFx nfx = nativeFx.remove(sessionId);
-        if (nfx != null) { nfx.release(); }
 
         Equalizer eq = equalizers.remove(sessionId);
         if (eq != null) { try { eq.release(); } catch (Exception ignored) {} }
@@ -326,14 +309,13 @@ public class AudioEffectsManager {
 
     public synchronized void setMasterEnabled(boolean enabled) {
         this.masterEnabled = enabled;
-        for (NativeFx n : nativeFx.values()) { n.setEnabled(enabled); }
         for (Equalizer eq : equalizers.values()) { try { eq.setEnabled(enabled); } catch (Exception ignored) {} }
         for (BassBoost bb : bassBoosts.values()) { try { bb.setEnabled(enabled && bassBoostStrength > 0); } catch (Exception ignored) {} }
         int lg = computeLoudnessGain();
         for (LoudnessEnhancer le : loudnessEnhancers.values()) { try { le.setTargetGain(lg); le.setEnabled(enabled && lg != 0); } catch (Exception ignored) {} }
         for (EnvironmentalReverb env : envReverbs.values()) { try { env.setEnabled(enabled && ambienteStrength > 0); } catch (Exception ignored) {} }
-        for (PresetReverb r : presetReverbs.values()) { try { r.setEnabled(enabled && USE_PRESET_REVERB && ambienteStrength > 0); } catch (Exception ignored) {} }
-        for (Virtualizer v : virtualizers.values()) { try { v.setEnabled(enabled && surroundStrength > 0); } catch (Exception ignored) {} }
+        for (PresetReverb r : presetReverbs.values()) { applyPresetReverb(r); }
+        for (Virtualizer v : virtualizers.values()) { try { v.setEnabled(virtualizerOn(v)); } catch (Exception ignored) {} }
         savePreferences();
     }
 
@@ -343,65 +325,27 @@ public class AudioEffectsManager {
         savePreferences();
     }
 
-    /** Ganancia total del LoudnessEnhancer (mB): volumen maestro + normalizacion + compensacion automatica. */
+    /** Ganancia total del LoudnessEnhancer (mB): volumen maestro + normalizacion + compensacion. */
     private int computeLoudnessGain() {
         int master = (int) (dynamicBoostStrength * 0.5);   // 0 .. +500
         int norm = (int) (normalizationStrength * 0.6);    // 0 .. +600
-        int maxBoost = 0;
+
+        // Mayor subida en graves/medios (63 Hz - 4 kHz) y en agudos (8 y 16 kHz)
+        int maxLow = 0, maxHigh = 0;
         for (int i = 0; i < UI_FREQUENCIES_HZ.length; i++) {
-            maxBoost = Math.max(maxBoost, (int) getUiVal(i));
+            int v = getUiVal(i);
+            if (i <= 6) maxLow = Math.max(maxLow, v); else maxHigh = Math.max(maxHigh, v);
         }
-        // El Bundle de Android baja el volumen general cuando subes bandas o bass boost.
-        // Esto lo compensa solo (valores de partida, ajustar de oido).
-        int makeup = (int) (maxBoost * 0.8) + (int) (bassBoostStrength * 0.15);
-        int total = gainMillibels + master + norm + makeup;
-        return Math.max(-500, Math.min(1800, total));
-    }
+        int lost = Math.max(0, Math.max(maxLow - HEADROOM_OFFSET_LOW_MB, maxHigh - HEADROOM_OFFSET_HIGH_MB));
+        lost = Math.min(lost, 1500);
+        int eqPart = (int) (lost * HEADROOM_COMP) - (int) (surroundStrength * COMP_SURROUND_MB / 1000.0);
+        eqPart = Math.max(-500, Math.min(1100, eqPart));   // no se come el rango del Volumen Maestro
 
-    // ------------------------------------------------------------------ motor nativo (SoundAlive FX)
-
-    /** Ganancia final del motor nativo: volumen maestro + normalizacion (sin la compensacion del Bundle de Android). */
-    private int computeNativeGain() {
-        int total = gainMillibels + (int) (dynamicBoostStrength * 0.5) + (int) (normalizationStrength * 0.6);
-        return Math.max(-500, Math.min(1800, total));
-    }
-
-    /** Nivel del ambiente en mB segun el slider Mix (0..20); mismo mapa que el reverb de Android. */
-    private int nativeWetMb() {
-        if (ambienteStrength <= 0) return -9999;
-        double mixPos = Math.min(2000, ambienteStrength) / 100.0;
-        double wet;
-        if (mixPos <= 10) {
-            wet = -3000 + (mixPos / 10.0) * (3000 + REVERB_AT_10_MB);
-        } else {
-            wet = REVERB_AT_10_MB + ((mixPos - 10) / 10.0) * (REVERB_MAX_MB - REVERB_AT_10_MB);
-        }
-        return (int) Math.round(wet) + NATIVE_WET_OFFSET_MB;
-    }
-
-    private void pushNativeParams(NativeFx n) {
-        // 10 bandas del motor (31 Hz ... 16 kHz) a partir de las 9 de la pantalla (63 Hz ... 16 kHz):
-        // la de 31 Hz sigue a la de 63 Hz a la mitad.
-        for (int b = 0; b < 10; b++) {
-            int mb = (b == 0) ? getUiVal(0) / 2 : getUiVal(b - 1);
-            n.set(NativeFx.P_EQ_BAND, b, mb);
-        }
-        n.set(NativeFx.P_EQ_ENABLE, 0, 1);
-        n.set(NativeFx.P_SURROUND, 0, virtStrength());
-        n.set(NativeFx.P_WET_MB, 0, nativeWetMb());
-        n.set(NativeFx.P_ROOM, 0, roomType);
-        n.set(NativeFx.P_POST_GAIN_MB, 0, computeNativeGain());
-        n.set(NativeFx.P_LIMITER, 0, 1);
-        n.set(NativeFx.P_MODULATION, 0, 600);
-        n.set(NativeFx.P_WIDTH, 0, 1000);
-    }
-
-    private void pushNativeAll() {
-        for (NativeFx n : nativeFx.values()) { pushNativeParams(n); }
+        int total = gainMillibels + master + norm + eqPart;
+        return Math.max(-500, Math.min(2000, total));
     }
 
     private void applyLoudness() {
-        pushNativeAll();
         int g = computeLoudnessGain();
         for (LoudnessEnhancer le : loudnessEnhancers.values()) {
             try {
@@ -414,8 +358,27 @@ public class AudioEffectsManager {
     public synchronized void setClarity(int strength) {
         this.clarityStrength = Math.max(0, Math.min(1000, strength));
         for (Equalizer eq : equalizers.values()) { applyAllBandsToEqualizer(eq); }
-        pushNativeAll();
         savePreferences();
+    }
+
+    private short presetForRoom() {
+        switch (roomType) {
+            case 2:  return PresetReverb.PRESET_SMALLROOM;   // Habitacion
+            case 3:  return PresetReverb.PRESET_LARGEHALL;   // Estadio
+            case 4:  return PresetReverb.PRESET_MEDIUMHALL;  // Auditorio
+            case 5:  return PresetReverb.PRESET_LARGEHALL;   // Catedral
+            default: return PresetReverb.PRESET_MEDIUMROOM;  // Estudio
+        }
+    }
+
+    private void applyPresetReverb(PresetReverb r) {
+        try {
+            boolean on = masterEnabled && USE_PRESET_REVERB && ambienteStrength >= PRESET_REVERB_FROM;
+            r.setPreset(on ? presetForRoom() : PresetReverb.PRESET_NONE);
+            r.setEnabled(on);
+        } catch (Exception e) {
+            Log.w(TAG, "PresetReverb set error: " + e.getMessage());
+        }
     }
 
     public synchronized void setAmbiente(int strength, int room) {
@@ -436,15 +399,8 @@ public class AudioEffectsManager {
             }
         }
         for (PresetReverb r : presetReverbs.values()) {
-            try {
-                boolean presetOn = USE_PRESET_REVERB && active;
-                r.setPreset((short) (presetOn ? PresetReverb.PRESET_LARGEHALL : PresetReverb.PRESET_NONE));
-                r.setEnabled(masterEnabled && presetOn);
-            } catch (Exception e) {
-                Log.w(TAG, "PresetReverb set error: " + e.getMessage());
-            }
+            applyPresetReverb(r);
         }
-        pushNativeAll();
         savePreferences();
     }
 
@@ -500,10 +456,21 @@ public class AudioEffectsManager {
         savePreferences();
     }
 
-    /** Curva mas agresiva: slider 3 -> ~55%, slider 5 -> ~70%, slider 10 -> 100% (maximo de Android = 1000). */
+    /** Curva suave: slider 1 -> ~18%, 3 -> ~40%, 5 -> ~60%, 10 -> 100% (maximo de Android = 1000). */
     private short virtStrength() {
         double ratio = Math.max(0, Math.min(1000, surroundStrength)) / 1000.0;
-        return (short) Math.round(1000 * Math.sqrt(ratio));
+        return (short) Math.round(1000 * Math.pow(ratio, 0.75));
+    }
+
+    /**
+     * El virtualizador se queda ENCENDIDO mientras la app este activa (con fuerza 0 en el slider 0).
+     * Antes se apagaba en 0, y encenderlo/apagarlo cambiaba el volumen de golpe.
+     * Si el equipo no soporta fuerza variable, solo se enciende con el slider arriba de 0.
+     */
+    private boolean virtualizerOn(Virtualizer v) {
+        boolean strengthOk = false;
+        try { strengthOk = v.getStrengthSupported(); } catch (Exception ignored) {}
+        return masterEnabled && (strengthOk || surroundStrength > 0);
     }
 
     public synchronized void setSurround(int strength) {
@@ -511,10 +478,9 @@ public class AudioEffectsManager {
         for (Virtualizer v : virtualizers.values()) {
             try {
                 if (v.getStrengthSupported()) v.setStrength(virtStrength());
-                v.setEnabled(masterEnabled && surroundStrength > 0);
+                v.setEnabled(virtualizerOn(v));
             } catch (Exception ignored) {}
         }
-        pushNativeAll();
         savePreferences();
     }
 
@@ -546,18 +512,17 @@ public class AudioEffectsManager {
         if (uiBandIndex < 0 || uiBandIndex >= UI_FREQUENCIES_HZ.length) return;
         uiBandLevels.put(uiBandIndex, level);
         for (Equalizer eq : equalizers.values()) { applyAllBandsToEqualizer(eq); }
-        pushNativeAll();
         savePreferences();
     }
 
     private short getUiVal(int index) {
         Short val = uiBandLevels.get((short) index);
         int v = (val != null) ? val : 0;
-        double boost = (clarityStrength / 1000.0) * 800; // Claridad: suma sobre 8k y 16k
+        double boost = (clarityStrength / 1000.0) * CLARITY_MAX_MB; // Claridad: suma sobre 8k y 16k
         if (index == 7) v += (int) Math.round(boost);
         if (index == 8) v += (int) Math.round(boost * 1.2);
         if (!dialsUsed) {
-            double bass = (bassBoostStrength / 1000.0) * 800;
+            double bass = (bassBoostStrength / 1000.0) * BASS_LAYER_MAX_MB;
             if (index == 0) v += (int) Math.round(bass * BASS_LAYER_63);
             if (index == 1) v += (int) Math.round(bass * BASS_LAYER_125);
             if (index == 2) v += (int) Math.round(bass * BASS_LAYER_250);
@@ -813,8 +778,6 @@ public class AudioEffectsManager {
             Virtualizer v = virtualizers.remove(sessionId);
             if (v != null) { try { v.setEnabled(false); v.release(); } catch (Exception ignored) {} }
         }
-        for (NativeFx n : nativeFx.values()) { n.release(); }
-        nativeFx.clear();
         activeSessions.clear();
         equalizers.clear();
         bassBoosts.clear();
